@@ -1,0 +1,179 @@
+{
+  "name": {
+    "en": "Venus Battery - EW11"
+  },
+  "energy": {
+    "homeBattery": true,
+    "meterPowerImportedCapability": "meter_power.imported",
+    "meterPowerExportedCapability": "meter_power.exported"
+  },
+  "class": "battery",
+  "pair": [
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "options": {
+        "singular": true
+      },
+      "navigation": {
+        "next": "add_devices"
+      }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ],
+  "capabilities": [
+    "measure_voltage",
+    "measure_current",
+    "measure_power",
+    "measure_voltage.battery",
+    "measure_current.battery",
+    "measure_power.battery",
+    "meter_power.capacity",
+    "measure_power.imported",
+    "measure_power.exported",
+    "meter_power.imported",
+    "meter_power.exported",
+    "alarm_generic",
+    "measure_temperature",
+    "measure_temperature.mos1",
+    "measure_temperature.mos2",
+    "battery_charging_state", 
+    "charge_mode",  
+    "operation_mode",
+    "user_work_mode",
+    "target_power",
+    "measure_battery"
+  ],
+  "capabilitiesOptions": {
+    "measure_power.ac": {
+      "title": {
+        "en": "AC Power"
+      }
+    },
+    "measure_power.dc": {
+      "title": {
+        "en": "DC Power"
+      }
+    },
+    "target_power": {
+      "title": {
+        "en": "Target Power"
+      }
+    },
+    "charge_mode": {
+      "title": {
+        "en": "Charge Mode"
+      },
+      "values": [
+        {
+          "id": "auto",
+          "title": {
+            "en": "Auto"
+          }
+        },
+        {
+          "id": "force_charge", 
+          "title": {
+            "en": "Force Charge"
+          }
+        },
+        {
+          "id": "force_discharge",
+          "title": {
+            "en": "Force Discharge" 
+          }
+        },
+        {
+          "id": "standby",
+          "title": {
+            "en": "Standby"
+          }
+        }
+      ]
+    },
+    "charging_status": {
+      "title": {
+        "en": "Charging Status"
+      },
+      "values": [
+        {
+          "id": "idle",
+          "title": {
+            "en": "Idle"
+          }
+        },
+        {
+          "id": "charging",
+          "title": {
+            "en": "Charging"
+          }
+        },
+        {
+          "id": "discharging", 
+          "title": {
+            "en": "Discharging"
+          }
+        }
+      ]
+    },
+    "operation_mode": {
+      "title": {
+        "en": "Operation Mode"
+      }
+    }
+  },
+  "settings": [
+    {
+      "type": "group",
+      "label": {
+        "en": "Connection Settings"
+      },
+      "children": [
+        {
+          "id": "ip",
+          "type": "text",
+          "label": {
+            "en": "IP Address"
+          },
+          "value": "192.168.1.100",
+          "hint": {
+            "en": "IP address of the EW11 Modbus gateway"
+          }
+        },
+        {
+          "id": "port", 
+          "type": "number",
+          "label": {
+            "en": "Port"
+          },
+          "value": 502,
+          "min": 1,
+          "max": 65535
+        },
+        {
+          "id": "slave_id",
+          "type": "number", 
+          "label": {
+            "en": "Slave ID"
+          },
+          "value": 1,
+          "min": 1,
+          "max": 247
+        },
+        {
+          "id": "poll_interval",
+          "type": "number",
+          "label": {
+            "en": "Poll Interval (ms)"
+          },
+          "value": 5000,
+          "min": 1000,
+          "max": 60000
+        }
+      ]
+    }
+  ]
+}

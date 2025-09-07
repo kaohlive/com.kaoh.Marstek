@@ -1,0 +1,59 @@
+{
+  "type": "enum",
+  "title": {
+    "en": "Operation Mode",
+    "nl": "Bedrijfsmodus"
+  },
+  "desc": {
+    "en": "Current battery operation mode",
+    "nl": "Huidige batterij bedrijfsmodus"
+  },
+  "values": [
+    {
+      "id": "sleep",
+      "title": {
+        "en": "Sleep",
+        "nl": "slaapstand"
+      }
+    },
+    {
+      "id": "standby",
+      "title": {
+        "en": "Standby",
+        "nl": "Stand-by"
+      }
+    },
+    {
+      "id": "charge",
+      "title": {
+        "en": "Charging",
+        "nl": "Laden"
+      }
+    },
+    {
+      "id": "discharge",
+      "title": {
+        "en": "Discharging",
+        "nl": "Ontladen"
+      }
+    },
+    {
+      "id": "backup",
+      "title": {
+        "en": "Backup mode",
+        "nl": "Backup"
+      }
+    },
+    {
+      "id": "update",
+      "title": {
+        "en": "OTA upgrade",
+        "nl": "software upgrade"
+      }
+    }
+  ],
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "icon": "/assets/operation-mode.svg"
+}

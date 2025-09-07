@@ -1,0 +1,38 @@
+{
+  "type": "enum",
+  "title": {
+    "en": "Charge Mode",
+    "nl": "Laadmodus"
+  },
+  "desc": {
+    "en": "Battery charging mode selection",
+    "nl": "Batterij laadmodus selectie"
+  },
+  "values": [
+    {
+      "id": "auto",
+      "title": {
+        "en": "Auto",
+        "nl": "Automatisch"
+      }
+    },
+    {
+      "id": "force_charge",
+      "title": {
+        "en": "Force Charge",
+        "nl": "Forceer Laden"
+      }
+    },
+    {
+      "id": "force_discharge",
+      "title": {
+        "en": "Force Discharge",
+        "nl": "Forceer Ontladen"
+      }
+    }
+  ],
+  "getable": true,
+  "setable": true,
+  "uiComponent": "picker",
+  "icon": "/assets/charge-mode.svg"
+}

@@ -1,0 +1,38 @@
+{
+  "type": "enum",
+  "title": {
+    "en": "Work Mode",
+    "nl": "Optimalizatie modus"
+  },
+  "desc": {
+    "en": "Work mode selection",
+    "nl": "Optimalizatie modus selectie"
+  },
+  "values": [
+    {
+      "id": "manual",
+      "title": {
+        "en": "Manual",
+        "nl": "Handmatig"
+      }
+    },
+    {
+      "id": "anti_feed",
+      "title": {
+        "en": "Grid zero mode",
+        "nl": "0 op de meter"
+      }
+    },
+    {
+      "id": "trade_mode",
+      "title": {
+        "en": "Trade on energy tarifs",
+        "nl": "Handelen op energie tarieven"
+      }
+    }
+  ],
+  "getable": true,
+  "setable": true,
+  "uiComponent": "picker",
+  "icon": "/assets/charge-mode.svg"
+}

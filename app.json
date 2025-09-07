@@ -1,0 +1,872 @@
+{
+  "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
+  "id": "com.kaoh.marstek",
+  "version": "1.0.0",
+  "brandColor": "#82BC41",
+  "compatibility": ">=12.4.0",
+  "sdk": 3,
+  "platformVersion": 2,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "Marstek Home Battery"
+  },
+  "description": {
+    "en": "Control and monitor Marstek home battery systems via Modbus TCP"
+  },
+  "category": [
+    "energy"
+  ],
+  "permissions": [],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
+  },
+  "author": {
+    "name": "Vincent Boer",
+    "email": "vincent@vdboer.nl"
+  },
+  "flow": {
+    "triggers": [
+      {
+        "id": "charging_status_changed",
+        "title": {
+          "en": "Charging status changed",
+          "nl": "Laadstatus gewijzigd"
+        },
+        "titleFormatted": {
+          "en": "Charging status changed",
+          "nl": "Laadstatus gewijzigd"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "status",
+            "type": "string",
+            "title": {
+              "en": "Status",
+              "nl": "Status"
+            }
+          }
+        ]
+      },
+      {
+        "id": "battery_started_charging",
+        "title": {
+          "en": "Battery started charging",
+          "nl": "Batterij is gaan laden"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "battery_started_discharging",
+        "title": {
+          "en": "Battery started discharging",
+          "nl": "Batterij is gaan ontladen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "device",
+            "type": "device",
+            "filter": "driver_id=venus_battery"
+          }
+        ]
+      },
+      {
+        "id": "soc_below_threshold",
+        "title": {
+          "en": "Battery level dropped below threshold",
+          "nl": "Batterijniveau onder drempel"
+        },
+        "titleFormatted": {
+          "en": "Battery level dropped below threshold",
+          "nl": "Batterijniveau onder threshold"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "threshold",
+            "type": "number",
+            "title": {
+              "en": "Threshold (%)",
+              "nl": "Drempel (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "soc_above_threshold",
+        "title": {
+          "en": "Battery level rose above threshold",
+          "nl": "Batterijniveau boven drempel"
+        },
+        "titleFormatted": {
+          "en": "Battery level rose above threshold",
+          "nl": "Batterijniveau boven threshold"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "threshold",
+            "type": "number",
+            "title": {
+              "en": "Threshold (%)",
+              "nl": "Drempel (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "operation_mode_changed",
+        "title": {
+          "en": "Operation mode changed",
+          "nl": "Bedrijfsmodus gewijzigd"
+        },
+        "titleFormatted": {
+          "en": "Operation mode changed",
+          "nl": "Bedrijfsmodus gewijzigd"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "string",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            }
+          }
+        ]
+      },
+      {
+        "id": "battery_fault_detected",
+        "title": {
+          "en": "Battery fault detected",
+          "nl": "Batterijfout gedetecteerd"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "battery_warning_detected",
+        "title": {
+          "en": "Battery warning detected",
+          "nl": "Batterijwaarschuwing gedetecteerd"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "temperature_too_high",
+        "title": {
+          "en": "Battery temperature too high",
+          "nl": "Batterijtemperatuur te hoog"
+        },
+        "titleFormatted": {
+          "en": "Battery temperature too high",
+          "nl": "Batterijtemperatuur te hoog"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "temperature",
+            "type": "number",
+            "title": {
+              "en": "Temperature (°C)",
+              "nl": "Temperatuur (°C)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "temperature_too_low",
+        "title": {
+          "en": "Battery temperature too low",
+          "nl": "Batterijtemperatuur te laag"
+        },
+        "titleFormatted": {
+          "en": "Battery temperature too low",
+          "nl": "Batterijtemperatuur te laag"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "temperature",
+            "type": "number",
+            "title": {
+              "en": "Temperature (°C)",
+              "nl": "Temperatuur (°C)"
+            }
+          }
+        ]
+      }
+    ],
+    "conditions": [
+      {
+        "id": "is_charging",
+        "title": {
+          "en": "Battery is charging",
+          "nl": "Batterij is aan het laden"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "is_discharging",
+        "title": {
+          "en": "Battery is discharging",
+          "nl": "Batterij is aan het ontladen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "soc_above",
+        "title": {
+          "en": "Battery level is above",
+          "nl": "Batterijniveau is boven"
+        },
+        "titleFormatted": {
+          "en": "Battery level is above [[percentage]]%",
+          "nl": "Batterijniveau is boven [[percentage]]%"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "number",
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "soc_below",
+        "title": {
+          "en": "Battery level is below",
+          "nl": "Batterijniveau is onder"
+        },
+        "titleFormatted": {
+          "en": "Battery level is below [[percentage]]%",
+          "nl": "Batterijniveau is onder [[percentage]]%"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "number",
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "operation_mode_is",
+        "title": {
+          "en": "Operation mode is",
+          "nl": "Bedrijfsmodus is"
+        },
+        "titleFormatted": {
+          "en": "Operation mode is [[mode]]",
+          "nl": "Bedrijfsmodus is [[mode]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "values": [
+              {
+                "id": "standby",
+                "title": {
+                  "en": "Standby",
+                  "nl": "Standby"
+                }
+              },
+              {
+                "id": "charge",
+                "title": {
+                  "en": "Charge",
+                  "nl": "Laden"
+                }
+              },
+              {
+                "id": "discharge",
+                "title": {
+                  "en": "Discharge",
+                  "nl": "Ontladen"
+                }
+              },
+              {
+                "id": "maintenance",
+                "title": {
+                  "en": "Maintenance",
+                  "nl": "Onderhoud"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "has_fault",
+        "title": {
+          "en": "Battery has fault",
+          "nl": "Batterij heeft storing"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "temperature_above",
+        "title": {
+          "en": "Temperature is above",
+          "nl": "Temperatuur is boven"
+        },
+        "titleFormatted": {
+          "en": "Temperature is above [[temperature]]°C",
+          "nl": "Temperatuur is boven [[temperature]]°C"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "min": -50,
+            "max": 100,
+            "step": 1,
+            "title": {
+              "en": "Temperature (°C)",
+              "nl": "Temperatuur (°C)"
+            }
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "set_charge_mode",
+        "title": {
+          "en": "Set charge mode",
+          "nl": "Stel laadmodus in"
+        },
+        "titleFormatted": {
+          "en": "Set charge mode to [[mode]]",
+          "nl": "Stel laadmodus in op [[mode]]"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "values": [
+              {
+                "id": "auto",
+                "title": {
+                  "en": "Auto",
+                  "nl": "Automatisch"
+                }
+              },
+              {
+                "id": "force_charge",
+                "title": {
+                  "en": "Force charge",
+                  "nl": "Geforceerd laden"
+                }
+              },
+              {
+                "id": "force_discharge",
+                "title": {
+                  "en": "Force discharge",
+                  "nl": "Geforceerd ontladen"
+                }
+              },
+              {
+                "id": "standby",
+                "title": {
+                  "en": "Standby",
+                  "nl": "Standby"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_target_power",
+        "title": {
+          "en": "Set target power",
+          "nl": "Stel doelvermogen in"
+        },
+        "titleFormatted": {
+          "en": "Set target power to [[power]]W",
+          "nl": "Stel doelvermogen in op [[power]]W"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "number",
+            "min": -10000,
+            "max": 10000,
+            "step": 100,
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "drivers": [
+    {
+      "name": {
+        "en": "Venus Battery - EW11"
+      },
+      "energy": {
+        "homeBattery": true,
+        "meterPowerImportedCapability": "meter_power.imported",
+        "meterPowerExportedCapability": "meter_power.exported"
+      },
+      "class": "battery",
+      "pair": [
+        {
+          "id": "list_devices",
+          "template": "list_devices",
+          "options": {
+            "singular": true
+          },
+          "navigation": {
+            "next": "add_devices"
+          }
+        },
+        {
+          "id": "add_devices",
+          "template": "add_devices"
+        }
+      ],
+      "capabilities": [
+        "measure_voltage",
+        "measure_current",
+        "measure_power",
+        "measure_voltage.battery",
+        "measure_current.battery",
+        "measure_power.battery",
+        "meter_power.capacity",
+        "measure_power.imported",
+        "measure_power.exported",
+        "meter_power.imported",
+        "meter_power.exported",
+        "alarm_generic",
+        "measure_temperature",
+        "measure_temperature.mos1",
+        "measure_temperature.mos2",
+        "battery_charging_state",
+        "charge_mode",
+        "operation_mode",
+        "user_work_mode",
+        "target_power",
+        "measure_battery"
+      ],
+      "capabilitiesOptions": {
+        "measure_power.ac": {
+          "title": {
+            "en": "AC Power"
+          }
+        },
+        "measure_power.dc": {
+          "title": {
+            "en": "DC Power"
+          }
+        },
+        "target_power": {
+          "title": {
+            "en": "Target Power"
+          }
+        },
+        "charge_mode": {
+          "title": {
+            "en": "Charge Mode"
+          },
+          "values": [
+            {
+              "id": "auto",
+              "title": {
+                "en": "Auto"
+              }
+            },
+            {
+              "id": "force_charge",
+              "title": {
+                "en": "Force Charge"
+              }
+            },
+            {
+              "id": "force_discharge",
+              "title": {
+                "en": "Force Discharge"
+              }
+            },
+            {
+              "id": "standby",
+              "title": {
+                "en": "Standby"
+              }
+            }
+          ]
+        },
+        "charging_status": {
+          "title": {
+            "en": "Charging Status"
+          },
+          "values": [
+            {
+              "id": "idle",
+              "title": {
+                "en": "Idle"
+              }
+            },
+            {
+              "id": "charging",
+              "title": {
+                "en": "Charging"
+              }
+            },
+            {
+              "id": "discharging",
+              "title": {
+                "en": "Discharging"
+              }
+            }
+          ]
+        },
+        "operation_mode": {
+          "title": {
+            "en": "Operation Mode"
+          }
+        }
+      },
+      "settings": [
+        {
+          "type": "group",
+          "label": {
+            "en": "Connection Settings"
+          },
+          "children": [
+            {
+              "id": "ip",
+              "type": "text",
+              "label": {
+                "en": "IP Address"
+              },
+              "value": "192.168.1.100",
+              "hint": {
+                "en": "IP address of the EW11 Modbus gateway"
+              }
+            },
+            {
+              "id": "port",
+              "type": "number",
+              "label": {
+                "en": "Port"
+              },
+              "value": 502,
+              "min": 1,
+              "max": 65535
+            },
+            {
+              "id": "slave_id",
+              "type": "number",
+              "label": {
+                "en": "Slave ID"
+              },
+              "value": 1,
+              "min": 1,
+              "max": 247
+            },
+            {
+              "id": "poll_interval",
+              "type": "number",
+              "label": {
+                "en": "Poll Interval (ms)"
+              },
+              "value": 5000,
+              "min": 1000,
+              "max": 60000
+            }
+          ]
+        }
+      ],
+      "id": "venus"
+    }
+  ],
+  "capabilities": {
+    "charge_mode": {
+      "type": "enum",
+      "title": {
+        "en": "Charge Mode",
+        "nl": "Laadmodus"
+      },
+      "desc": {
+        "en": "Battery charging mode selection",
+        "nl": "Batterij laadmodus selectie"
+      },
+      "values": [
+        {
+          "id": "auto",
+          "title": {
+            "en": "Auto",
+            "nl": "Automatisch"
+          }
+        },
+        {
+          "id": "force_charge",
+          "title": {
+            "en": "Force Charge",
+            "nl": "Forceer Laden"
+          }
+        },
+        {
+          "id": "force_discharge",
+          "title": {
+            "en": "Force Discharge",
+            "nl": "Forceer Ontladen"
+          }
+        }
+      ],
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker",
+      "icon": "/assets/charge-mode.svg"
+    },
+    "operation_mode": {
+      "type": "enum",
+      "title": {
+        "en": "Operation Mode",
+        "nl": "Bedrijfsmodus"
+      },
+      "desc": {
+        "en": "Current battery operation mode",
+        "nl": "Huidige batterij bedrijfsmodus"
+      },
+      "values": [
+        {
+          "id": "sleep",
+          "title": {
+            "en": "Sleep",
+            "nl": "slaapstand"
+          }
+        },
+        {
+          "id": "standby",
+          "title": {
+            "en": "Standby",
+            "nl": "Stand-by"
+          }
+        },
+        {
+          "id": "charge",
+          "title": {
+            "en": "Charging",
+            "nl": "Laden"
+          }
+        },
+        {
+          "id": "discharge",
+          "title": {
+            "en": "Discharging",
+            "nl": "Ontladen"
+          }
+        },
+        {
+          "id": "backup",
+          "title": {
+            "en": "Backup mode",
+            "nl": "Backup"
+          }
+        },
+        {
+          "id": "update",
+          "title": {
+            "en": "OTA upgrade",
+            "nl": "software upgrade"
+          }
+        }
+      ],
+      "getable": true,
+      "setable": false,
+      "uiComponent": "sensor",
+      "icon": "/assets/operation-mode.svg"
+    },
+    "target_power": {
+      "type": "number",
+      "title": {
+        "en": "Target Power",
+        "nl": "Doelvermogen"
+      },
+      "desc": {
+        "en": "Target power setting for battery operation",
+        "nl": "Doelvermogen instelling voor batterij werking"
+      },
+      "units": {
+        "en": "W",
+        "nl": "W"
+      },
+      "min": -2500,
+      "max": 2500,
+      "step": 50,
+      "decimals": 0,
+      "getable": true,
+      "setable": true,
+      "uiComponent": "slider",
+      "icon": "/assets/target-power.svg"
+    },
+    "user_work_mode": {
+      "type": "enum",
+      "title": {
+        "en": "Work Mode",
+        "nl": "Optimalizatie modus"
+      },
+      "desc": {
+        "en": "Work mode selection",
+        "nl": "Optimalizatie modus selectie"
+      },
+      "values": [
+        {
+          "id": "manual",
+          "title": {
+            "en": "Manual",
+            "nl": "Handmatig"
+          }
+        },
+        {
+          "id": "anti_feed",
+          "title": {
+            "en": "Grid zero mode",
+            "nl": "0 op de meter"
+          }
+        },
+        {
+          "id": "trade_mode",
+          "title": {
+            "en": "Trade on energy tarifs",
+            "nl": "Handelen op energie tarieven"
+          }
+        }
+      ],
+      "getable": true,
+      "setable": true,
+      "uiComponent": "picker",
+      "icon": "/assets/charge-mode.svg"
+    }
+  }
+}

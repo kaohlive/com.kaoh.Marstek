@@ -1,0 +1,23 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Target Power",
+    "nl": "Doelvermogen"
+  },
+  "desc": {
+    "en": "Target power setting for battery operation",
+    "nl": "Doelvermogen instelling voor batterij werking"
+  },
+  "units": {
+    "en": "W",
+    "nl": "W"
+  },
+  "min": -2500,
+  "max": 2500,
+  "step": 50,
+  "decimals": 0,
+  "getable": true,
+  "setable": true,
+  "uiComponent": "slider",
+  "icon": "/assets/target-power.svg"
+}

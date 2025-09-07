@@ -1,0 +1,392 @@
+{
+"triggers": [
+    {
+    "id": "charging_status_changed",
+    "title": {
+        "en": "Charging status changed",
+        "nl": "Laadstatus gewijzigd"
+    },
+    "titleFormatted": {
+        "en": "Charging status changed",
+        "nl": "Laadstatus gewijzigd"
+    },
+    "args": [],
+    "tokens": [
+        {
+        "name": "status",
+        "type": "string",
+        "title": {
+            "en": "Status",
+            "nl": "Status"
+        }
+        }
+    ]
+    },
+    {
+    "id": "battery_started_charging",
+    "title": {
+        "en": "Battery started charging",
+        "nl": "Batterij is gaan laden"
+    },
+    "args": []
+    },
+    {
+    "id": "battery_started_discharging",
+    "title": {
+        "en": "Battery started discharging",
+        "nl": "Batterij is gaan ontladen"
+    },
+    "args": [
+        {
+        "name": "device",
+        "type": "device",
+        "filter": "driver_id=venus_battery"
+        }
+    ]
+    },
+    {
+    "id": "soc_below_threshold",
+    "title": {
+        "en": "Battery level dropped below threshold",
+        "nl": "Batterijniveau onder drempel"
+    },
+    "titleFormatted": {
+        "en": "Battery level dropped below threshold",
+        "nl": "Batterijniveau onder threshold"
+    },
+    "args": [],
+    "tokens": [
+        {
+        "name": "threshold",
+        "type": "number",
+        "title": {
+            "en": "Threshold (%)",
+            "nl": "Drempel (%)"
+        }
+        }
+    ]
+    },
+    {
+    "id": "soc_above_threshold",
+    "title": {
+        "en": "Battery level rose above threshold",
+        "nl": "Batterijniveau boven drempel"
+    },
+    "titleFormatted": {
+        "en": "Battery level rose above threshold",
+        "nl": "Batterijniveau boven threshold"
+    },
+    "args": [],
+    "tokens": [
+        {
+        "name": "threshold",
+        "type": "number",
+        "title": {
+            "en": "Threshold (%)",
+            "nl": "Drempel (%)"
+        }
+        }
+    ]
+    },
+    {
+    "id": "operation_mode_changed",
+    "title": {
+        "en": "Operation mode changed",
+        "nl": "Bedrijfsmodus gewijzigd"
+    },
+    "titleFormatted": {
+        "en": "Operation mode changed",
+        "nl": "Bedrijfsmodus gewijzigd"
+    },
+    "args": [],
+    "tokens": [
+        {
+        "name": "mode",
+        "type": "string",
+        "title": {
+            "en": "Mode",
+            "nl": "Modus"
+        }
+        }
+    ]
+    },
+    {
+    "id": "battery_fault_detected",
+    "title": {
+        "en": "Battery fault detected",
+        "nl": "Batterijfout gedetecteerd"
+    },
+    "args": []
+    },
+    {
+    "id": "battery_warning_detected",
+    "title": {
+        "en": "Battery warning detected",
+        "nl": "Batterijwaarschuwing gedetecteerd"
+    },
+    "args": []
+    },
+    {
+    "id": "temperature_too_high",
+    "title": {
+        "en": "Battery temperature too high",
+        "nl": "Batterijtemperatuur te hoog"
+    },
+    "titleFormatted": {
+        "en": "Battery temperature too high",
+        "nl": "Batterijtemperatuur te hoog"
+    },
+    "args": [],
+    "tokens": [
+        {
+        "name": "temperature",
+        "type": "number",
+        "title": {
+            "en": "Temperature (°C)",
+            "nl": "Temperatuur (°C)"
+        }
+        }
+    ]
+    },
+    {
+    "id": "temperature_too_low",
+    "title": {
+        "en": "Battery temperature too low",
+        "nl": "Batterijtemperatuur te laag"
+    },
+    "titleFormatted": {
+        "en": "Battery temperature too low",
+        "nl": "Batterijtemperatuur te laag"
+    },
+    "args": [],
+    "tokens": [
+        {
+        "name": "temperature",
+        "type": "number",
+        "title": {
+            "en": "Temperature (°C)",
+            "nl": "Temperatuur (°C)"
+        }
+        }
+    ]
+    }
+],
+"conditions": [
+    {
+    "id": "is_charging",
+    "title": {
+        "en": "Battery is charging",
+        "nl": "Batterij is aan het laden"
+    },
+    "args": []
+    },
+    {
+    "id": "is_discharging",
+    "title": {
+        "en": "Battery is discharging",
+        "nl": "Batterij is aan het ontladen"
+    },
+    "args": []
+    },
+    {
+    "id": "soc_above",
+    "title": {
+        "en": "Battery level is above",
+        "nl": "Batterijniveau is boven"
+    },
+    "titleFormatted": {
+        "en": "Battery level is above [[percentage]]%",
+        "nl": "Batterijniveau is boven [[percentage]]%"
+    },
+    "args": [
+        {
+        "name": "percentage",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+        }
+        }
+    ]
+    },
+    {
+    "id": "soc_below",
+    "title": {
+        "en": "Battery level is below",
+        "nl": "Batterijniveau is onder"
+    },
+    "titleFormatted": {
+        "en": "Battery level is below [[percentage]]%",
+        "nl": "Batterijniveau is onder [[percentage]]%"
+    },
+    "args": [
+        {
+        "name": "percentage",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+        }
+        }
+    ]
+    },
+    {
+    "id": "operation_mode_is",
+    "title": {
+        "en": "Operation mode is",
+        "nl": "Bedrijfsmodus is"
+    },
+    "titleFormatted": {
+        "en": "Operation mode is [[mode]]",
+        "nl": "Bedrijfsmodus is [[mode]]"
+    },
+    "args": [
+        {
+        "name": "mode",
+        "type": "dropdown",
+        "values": [
+            {
+            "id": "standby",
+            "title": {
+                "en": "Standby",
+                "nl": "Standby"
+            }
+            },
+            {
+            "id": "charge",
+            "title": {
+                "en": "Charge",
+                "nl": "Laden"
+            }
+            },
+            {
+            "id": "discharge",
+            "title": {
+                "en": "Discharge",
+                "nl": "Ontladen"
+            }
+            },
+            {
+            "id": "maintenance",
+            "title": {
+                "en": "Maintenance",
+                "nl": "Onderhoud"
+            }
+            }
+        ]
+        }
+    ]
+    },
+    {
+    "id": "has_fault",
+    "title": {
+        "en": "Battery has fault",
+        "nl": "Batterij heeft storing"
+    },
+    "args": []
+    },
+    {
+    "id": "temperature_above",
+    "title": {
+        "en": "Temperature is above",
+        "nl": "Temperatuur is boven"
+    },
+    "titleFormatted": {
+        "en": "Temperature is above [[temperature]]°C",
+        "nl": "Temperatuur is boven [[temperature]]°C"
+    },
+    "args": [
+        {
+        "name": "temperature",
+        "type": "number",
+        "min": -50,
+        "max": 100,
+        "step": 1,
+        "title": {
+            "en": "Temperature (°C)",
+            "nl": "Temperatuur (°C)"
+        }
+        }
+    ]
+    }
+],
+"actions": [
+    {
+    "id": "set_charge_mode",
+    "title": {
+        "en": "Set charge mode",
+        "nl": "Stel laadmodus in"
+    },
+    "titleFormatted": {
+        "en": "Set charge mode to [[mode]]",
+        "nl": "Stel laadmodus in op [[mode]]"
+    },
+    "args": [
+        {
+        "name": "mode",
+        "type": "dropdown",
+        "values": [
+            {
+            "id": "auto",
+            "title": {
+                "en": "Auto",
+                "nl": "Automatisch"
+            }
+            },
+            {
+            "id": "force_charge",
+            "title": {
+                "en": "Force charge",
+                "nl": "Geforceerd laden"
+            }
+            },
+            {
+            "id": "force_discharge",
+            "title": {
+                "en": "Force discharge",
+                "nl": "Geforceerd ontladen"
+            }
+            },
+            {
+            "id": "standby",
+            "title": {
+                "en": "Standby",
+                "nl": "Standby"
+            }
+            }
+        ]
+        }
+    ]
+    },
+    {
+    "id": "set_target_power",
+    "title": {
+        "en": "Set target power",
+        "nl": "Stel doelvermogen in"
+    },
+    "titleFormatted": {
+        "en": "Set target power to [[power]]W",
+        "nl": "Stel doelvermogen in op [[power]]W"
+    },
+    "args": [
+        {
+        "name": "power",
+        "type": "number",
+        "min": -10000,
+        "max": 10000,
+        "step": 100,
+        "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+        }
+        }
+    ]
+    }
+]
+}
