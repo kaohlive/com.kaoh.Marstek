@@ -13,14 +13,15 @@ class VenusBatteryDriver extends Homey.Driver {
     5: 'update'
   };
   FORCE_MODES = {
-    0: 'auto',
+    0: 'none',
     1: 'force_charge',
-    2: 'force_discharge'      
+    2: 'force_discharge'     
   };
   WORK_MODES = {
     0: 'manual',
     1: 'anti_feed',
-    2: 'trade_mode'      
+    2: 'trade_mode',
+    3: 'control_mode'     
   };
 
   async onInit() {

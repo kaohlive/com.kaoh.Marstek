@@ -1,8 +1,8 @@
 {
   "type": "enum",
   "title": {
-    "en": "Charge Mode",
-    "nl": "Laadmodus"
+    "en": "Force Charge Mode",
+    "nl": "Laadmodus forceren"
   },
   "desc": {
     "en": "Battery charging mode selection",
@@ -10,10 +10,10 @@
   },
   "values": [
     {
-      "id": "auto",
+      "id": "none",
       "title": {
-        "en": "Auto",
-        "nl": "Automatisch"
+        "en": "Force mode Off",
+        "nl": "Gedwongen mode uit"
       }
     },
     {
@@ -28,6 +28,13 @@
       "title": {
         "en": "Force Discharge",
         "nl": "Forceer Ontladen"
+      }
+    },
+    {
+      "id": "force_soc",
+      "title": {
+        "en": "Force to SOC target",
+        "nl": "Forceer tot SOC doel"
       }
     }
   ],

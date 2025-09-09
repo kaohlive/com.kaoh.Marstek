@@ -255,6 +255,294 @@ class ModbusClient extends EventEmitter {
       low: value32 & 0xFFFF
     };
   }
+
+  /**
+   * Modbus String Conversion Utilities
+   * Converts Modbus register responses to strings for text data
+   */
+
+  /**
+   * Convert buffer to string (for text data from Modbus)
+   * @param {Buffer|Array} buffer - Buffer from Modbus response
+   * @param {object} options - String conversion options
+   * @returns {string} Converted string
+   */
+  static bufferToString(buffer, options = {}) {
+    const {
+      encoding = 'ascii',     // 'ascii', 'utf8', 'latin1'
+      trimNull = true,        // Remove null terminators
+      trimWhitespace = true,  // Trim leading/trailing whitespace
+      swapBytes = false       // Swap byte order within each register
+    } = options;
+    
+    // Handle case where buffer is wrapped in an array
+    if (Array.isArray(buffer) && buffer.length > 0 && Buffer.isBuffer(buffer[0])) {
+      buffer = buffer[0];
+    }
+    
+    if (!Buffer.isBuffer(buffer)) {
+      throw new Error('Invalid buffer for string conversion');
+    }
+    
+    let workingBuffer = buffer;
+    
+    // Swap bytes within each 16-bit register if needed
+    if (swapBytes && buffer.length >= 2) {
+      workingBuffer = Buffer.alloc(buffer.length);
+      for (let i = 0; i < buffer.length; i += 2) {
+        if (i + 1 < buffer.length) {
+          workingBuffer[i] = buffer[i + 1];
+          workingBuffer[i + 1] = buffer[i];
+        } else {
+          workingBuffer[i] = buffer[i];
+        }
+      }
+    }
+    
+    // Convert to string
+    let result = workingBuffer.toString(encoding);
+    
+    // Remove null terminators
+    if (trimNull) {
+      const nullIndex = result.indexOf('\0');
+      if (nullIndex !== -1) {
+        result = result.substring(0, nullIndex);
+      }
+    }
+    
+    // Trim whitespace
+    if (trimWhitespace) {
+      result = result.trim();
+    }
+    
+    return result;
+  }
+
+  /**
+   * Convert string buffer with automatic encoding detection
+   * @param {Buffer|Array} buffer - Buffer from Modbus response
+   * @param {object} options - Conversion options
+   * @returns {object} Object with string and detected info
+   */
+  static bufferToStringAuto(buffer, options = {}) {
+    const { trimNull = true, trimWhitespace = true, swapBytes = false } = options;
+    
+    const encodings = ['ascii', 'utf8', 'latin1'];
+    const results = [];
+    
+    for (const encoding of encodings) {
+      try {
+        const str = bufferToString(buffer, { 
+          encoding, 
+          trimNull, 
+          trimWhitespace, 
+          swapBytes 
+        });
+        
+        // Check if string contains mostly printable characters
+        const printableRatio = str.split('').filter(c => {
+          const code = c.charCodeAt(0);
+          return code >= 32 && code <= 126; // Printable ASCII range
+        }).length / str.length;
+        
+        results.push({
+          encoding,
+          string: str,
+          printableRatio,
+          length: str.length
+        });
+      } catch (error) {
+        // Skip encoding if it fails
+      }
+    }
+    
+    // Return the encoding with the highest printable character ratio
+    const best = results.sort((a, b) => b.printableRatio - a.printableRatio)[0];
+    
+    return {
+      string: best ? best.string : '',
+      encoding: best ? best.encoding : 'ascii',
+      printableRatio: best ? best.printableRatio : 0,
+      allResults: results
+    };
+  }
+
+  /**
+   * Helper function to calculate required number of registers for string length
+   * @param {number} stringLength - Length of string in bytes
+   * @returns {number} Number of Modbus registers needed
+   */
+  static calculateRegistersForString(stringLength) {
+    return Math.ceil(stringLength / 2);
+  }
+
+  /**
+   * Comprehensive string extraction from Modbus with error handling
+   * @param {Buffer|Array} modbusResponse - Response from Modbus read
+   * @param {object} options - Configuration options
+   * @returns {object} String extraction result
+   */
+  static extractStringFromModbus(modbusResponse, options = {}) {
+    const {
+      encoding = 'ascii',
+      trimNull = true,
+      trimWhitespace = true,
+      swapBytes = false,
+      maxLength = null,
+      autoDetectEncoding = false
+    } = options;
+    
+    try {
+      let result;
+      
+      if (autoDetectEncoding) {
+        result = bufferToStringAuto(modbusResponse, {
+          trimNull,
+          trimWhitespace,
+          swapBytes
+        });
+        
+        return {
+          success: true,
+          string: result.string,
+          encoding: result.encoding,
+          length: result.string.length,
+          printableRatio: result.printableRatio,
+          truncated: false
+        };
+      } else {
+        let extractedString = bufferToString(modbusResponse, {
+          encoding,
+          trimNull,
+          trimWhitespace,
+          swapBytes
+        });
+        
+        let truncated = false;
+        if (maxLength && extractedString.length > maxLength) {
+          extractedString = extractedString.substring(0, maxLength);
+          truncated = true;
+        }
+        
+        return {
+          success: true,
+          string: extractedString,
+          encoding: encoding,
+          length: extractedString.length,
+          truncated: truncated
+        };
+      }
+      
+    } catch (error) {
+      return {
+        success: false,
+        string: '',
+        encoding: null,
+        length: 0,
+        error: error.message,
+        truncated: false
+      };
+    }
+  }
+
+  /**
+   * Debug function to inspect buffer contents
+   * @param {Buffer|Array} buffer - Buffer to inspect
+   * @returns {object} Debug information
+   */
+  static debugBuffer(buffer) {
+    // Handle case where buffer is wrapped in an array
+    if (Array.isArray(buffer) && buffer.length > 0 && Buffer.isBuffer(buffer[0])) {
+      buffer = buffer[0];
+    }
+    
+    if (!Buffer.isBuffer(buffer)) {
+      return { error: 'Not a valid buffer' };
+    }
+    
+    const bytes = Array.from(buffer);
+    const hex = buffer.toString('hex');
+    const ascii = buffer.toString('ascii').replace(/[\x00-\x1F\x7F-\xFF]/g, '.');
+    
+    return {
+      length: buffer.length,
+      bytes: bytes,
+      hex: hex,
+      ascii: ascii,
+      registers: Math.ceil(buffer.length / 2),
+      hasNullBytes: bytes.includes(0),
+      printableChars: ascii.replace(/\./g, '').length
+    };
+  }
+
+  static stringToModbusBuffer(str, maxLength, options = {}) {
+    const {
+      encoding = 'ascii',
+      padWithNull = true,
+      swapBytes = false
+    } = options;
+    
+    // Truncate string if too long
+    let workingString = str;
+    if (workingString.length > maxLength) {
+      workingString = workingString.substring(0, maxLength);
+    }
+    
+    // Create buffer from string
+    let buffer = Buffer.from(workingString, encoding);
+    
+    // Pad with null bytes if shorter than maxLength
+    if (padWithNull && buffer.length < maxLength) {
+      const paddedBuffer = Buffer.alloc(maxLength);
+      buffer.copy(paddedBuffer);
+      // Rest of buffer is already filled with zeros
+      buffer = paddedBuffer;
+    }
+    
+    // Swap bytes within each register if needed
+    if (swapBytes && buffer.length >= 2) {
+      const swappedBuffer = Buffer.alloc(buffer.length);
+      for (let i = 0; i < buffer.length; i += 2) {
+        if (i + 1 < buffer.length) {
+          swappedBuffer[i] = buffer[i + 1];
+          swappedBuffer[i + 1] = buffer[i];
+        } else {
+          swappedBuffer[i] = buffer[i];
+        }
+      }
+      buffer = swappedBuffer;
+    }
+    
+    return buffer;
+  }
+
+  /**
+   * Convert buffer to array of 16-bit register values for Modbus writing
+   * @param {Buffer} buffer - Buffer to convert
+   * @param {boolean} littleEndian - Byte order (default: false for big-endian)
+   * @returns {Array<number>} Array of register values
+   */
+  static bufferToRegisters(buffer, littleEndian = false) {
+    const registers = [];
+    
+    for (let i = 0; i < buffer.length; i += 2) {
+      let registerValue;
+      if (i + 1 < buffer.length) {
+        // Two bytes available
+        registerValue = littleEndian ? 
+          buffer.readUInt16LE(i) : 
+          buffer.readUInt16BE(i);
+      } else {
+        // Only one byte available, pad with zero
+        registerValue = littleEndian ? 
+          buffer[i] : 
+          (buffer[i] << 8);
+      }
+      registers.push(registerValue);
+    }
+    
+    return registers;
+  }
 }
 
 module.exports = ModbusClient;

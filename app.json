@@ -571,87 +571,97 @@
         "measure_temperature.mos1",
         "measure_temperature.mos2",
         "battery_charging_state",
-        "charge_mode",
+        "force_charge_mode",
         "operation_mode",
         "user_work_mode",
-        "target_power",
-        "measure_battery"
+        "force_charge_target",
+        "measure_battery",
+        "force_discharge_power",
+        "force_charge_power"
       ],
       "capabilitiesOptions": {
-        "measure_power.ac": {
+        "measure_voltage": {
           "title": {
-            "en": "AC Power"
+            "en": "Grid output Voltage",
+            "nl": "Netuitvoer voltage"
           }
         },
-        "measure_power.dc": {
+        "measure_voltage.battery": {
           "title": {
-            "en": "DC Power"
+            "en": "Battery Voltage",
+            "nl": "Batterij voltage"
           }
         },
-        "target_power": {
+        "measure_current": {
           "title": {
-            "en": "Target Power"
+            "en": "Grid output Current",
+            "nl": "Netuitvoer stroom"
           }
         },
-        "charge_mode": {
+        "measure_current.battery": {
           "title": {
-            "en": "Charge Mode"
-          },
-          "values": [
-            {
-              "id": "auto",
-              "title": {
-                "en": "Auto"
-              }
-            },
-            {
-              "id": "force_charge",
-              "title": {
-                "en": "Force Charge"
-              }
-            },
-            {
-              "id": "force_discharge",
-              "title": {
-                "en": "Force Discharge"
-              }
-            },
-            {
-              "id": "standby",
-              "title": {
-                "en": "Standby"
-              }
-            }
-          ]
+            "en": "Battery Current",
+            "nl": "Batterij stroom"
+          }
         },
-        "charging_status": {
+        "measure_power": {
           "title": {
-            "en": "Charging Status"
-          },
-          "values": [
-            {
-              "id": "idle",
-              "title": {
-                "en": "Idle"
-              }
-            },
-            {
-              "id": "charging",
-              "title": {
-                "en": "Charging"
-              }
-            },
-            {
-              "id": "discharging",
-              "title": {
-                "en": "Discharging"
-              }
-            }
-          ]
+            "en": "Grid output Power",
+            "nl": "Netuitvoer vermogen"
+          }
         },
-        "operation_mode": {
+        "measure_power.battery": {
           "title": {
-            "en": "Operation Mode"
+            "en": "Battery Power",
+            "nl": "Batterij vermogen"
+          }
+        },
+        "measure_power.imported": {
+          "title": {
+            "en": "Charging Power",
+            "nl": "Laad vermogen"
+          }
+        },
+        "measure_power.exported": {
+          "title": {
+            "en": "Discharging Power",
+            "nl": "Ontlaad vermogen"
+          }
+        },
+        "meter_power.imported": {
+          "title": {
+            "en": "Charged Energy",
+            "nl": "Opgeladen energie"
+          }
+        },
+        "meter_power.exported": {
+          "title": {
+            "en": "Discharged Energy",
+            "nl": "Ontladen energie"
+          }
+        },
+        "meter_power.capacity": {
+          "title": {
+            "en": "Stored energy available",
+            "nl": "Opgeslagen energie beschikbaar"
+          }
+        },
+        "measure_temperature": {
+          "title": {
+            "en": "Internal temperature",
+            "nl": "Interne temperatuur"
+          }
+        },
+        "measure_temperature.mos1": {
+          "title": {
+            "en": "MOSFET 1 temperature",
+            "nl": "MOSFET 1 temperatuur"
+          }
+        },
+        "measure_temperature.mos2": {
+          "title": {
+            "en": "MOSFET 2 temperature",
+            "nl": "MOSFET 2 temperatuur"
           }
         }
       },
@@ -704,17 +714,51 @@
               "max": 60000
             }
           ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery info"
+          },
+          "children": [
+            {
+              "id": "storage_capacity",
+              "type": "label",
+              "label": {
+                "en": "Storage capability",
+                "nl": "Opslag capacitijd"
+              },
+              "value": "x.x kwh"
+            },
+            {
+              "id": "device_name",
+              "type": "label",
+              "label": {
+                "en": "Marstek device name",
+                "nl": "Marstek apperaat naam"
+              },
+              "value": "xxx"
+            },
+            {
+              "id": "firmware",
+              "type": "label",
+              "label": {
+                "en": "Firmware"
+              },
+              "value": "xxx"
+            }
+          ]
         }
       ],
       "id": "venus"
     }
   ],
   "capabilities": {
-    "charge_mode": {
+    "force_charge_mode": {
       "type": "enum",
       "title": {
-        "en": "Charge Mode",
-        "nl": "Laadmodus"
+        "en": "Force Charge Mode",
+        "nl": "Laadmodus forceren"
       },
       "desc": {
         "en": "Battery charging mode selection",
@@ -722,10 +766,10 @@
       },
       "values": [
         {
-          "id": "auto",
+          "id": "none",
           "title": {
-            "en": "Auto",
-            "nl": "Automatisch"
+            "en": "Force mode Off",
+            "nl": "Gedwongen mode uit"
           }
         },
         {
@@ -741,12 +785,88 @@
             "en": "Force Discharge",
             "nl": "Forceer Ontladen"
           }
+        },
+        {
+          "id": "force_soc",
+          "title": {
+            "en": "Force to SOC target",
+            "nl": "Forceer tot SOC doel"
+          }
         }
       ],
       "getable": true,
       "setable": true,
       "uiComponent": "picker",
       "icon": "/assets/charge-mode.svg"
+    },
+    "force_charge_power": {
+      "type": "number",
+      "title": {
+        "en": "Force charge power",
+        "nl": "Gedwongen laad vermogen"
+      },
+      "desc": {
+        "en": "Power setting for forced charge",
+        "nl": "Vermogen instelling voor gedwongen laden"
+      },
+      "units": {
+        "en": "W",
+        "nl": "W"
+      },
+      "min": 0,
+      "max": 2500,
+      "step": 5,
+      "decimals": 0,
+      "getable": true,
+      "setable": true,
+      "uiComponent": "slider",
+      "icon": "/assets/target-power.svg"
+    },
+    "force_charge_target": {
+      "type": "number",
+      "title": {
+        "en": "Force SOC target",
+        "nl": "Gedwongen Doel SOC"
+      },
+      "desc": {
+        "en": "Target SOC setting for force (dis)charge",
+        "nl": "Doel SOC instelling voor gedwongen (ont)laden"
+      },
+      "units": {
+        "en": "%",
+        "nl": "%"
+      },
+      "min": 11,
+      "max": 100,
+      "step": 1,
+      "decimals": 0,
+      "getable": true,
+      "setable": true,
+      "uiComponent": "slider",
+      "icon": "/assets/target-power.svg"
+    },
+    "force_discharge_power": {
+      "type": "number",
+      "title": {
+        "en": "Force discharge power",
+        "nl": "Gedwongen ontlaad vermogen"
+      },
+      "desc": {
+        "en": "Power setting for forced discharge",
+        "nl": "Vermogen instelling voor gedwongen ontladen"
+      },
+      "units": {
+        "en": "W",
+        "nl": "W"
+      },
+      "min": 0,
+      "max": 2500,
+      "step": 5,
+      "decimals": 0,
+      "getable": true,
+      "setable": true,
+      "uiComponent": "slider",
+      "icon": "/assets/target-power.svg"
     },
     "operation_mode": {
       "type": "enum",
@@ -807,29 +927,6 @@
       "uiComponent": "sensor",
       "icon": "/assets/operation-mode.svg"
     },
-    "target_power": {
-      "type": "number",
-      "title": {
-        "en": "Target Power",
-        "nl": "Doelvermogen"
-      },
-      "desc": {
-        "en": "Target power setting for battery operation",
-        "nl": "Doelvermogen instelling voor batterij werking"
-      },
-      "units": {
-        "en": "W",
-        "nl": "W"
-      },
-      "min": -2500,
-      "max": 2500,
-      "step": 50,
-      "decimals": 0,
-      "getable": true,
-      "setable": true,
-      "uiComponent": "slider",
-      "icon": "/assets/target-power.svg"
-    },
     "user_work_mode": {
       "type": "enum",
       "title": {
@@ -860,6 +957,13 @@
           "title": {
             "en": "Trade on energy tarifs",
             "nl": "Handelen op energie tarieven"
+          }
+        },
+        {
+          "id": "control_mode",
+          "title": {
+            "en": "Use force controls",
+            "nl": "Gebruik forceer laadmodus"
           }
         }
       ],

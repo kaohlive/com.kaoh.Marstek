@@ -6,9 +6,7 @@ const ModbusClient = require('../../api/ModbusClient');
 class VenusBatteryDevice extends Homey.Device {
 
   async onInit() {
-    this.log('VenusBatteryDevice has been initialized');
-
-    await this.setCapabilityNames();
+    this.log('VenusBattery Device has been initialized');
 
     // Get device settings
     this.settings = this.getSettings();
@@ -26,9 +24,11 @@ class VenusBatteryDevice extends Homey.Device {
     this.startPolling();
     
     // Register capability listeners for writable registers
-    this.registerCapabilityListener('target_power', this.onCapabilityTargetPower.bind(this));
-    this.registerCapabilityListener('charge_mode', this.onCapabilityChargeMode.bind(this));
+    this.registerCapabilityListener('force_charge_mode', this.onCapabilityChargeMode.bind(this));
     this.registerCapabilityListener('user_work_mode', this.onCapabilityUserWorkMode.bind(this));
+    this.registerCapabilityListener('force_charge_target', this.onCapabilityForceChargeTarget.bind(this));
+    this.registerCapabilityListener('force_charge_power', this.onCapabilityForceChargePower.bind(this));
+    this.registerCapabilityListener('force_discharge_power', this.onCapabilityForceDisChargePower.bind(this));
 
     //Setup some global vars that we get from the device on init
     this.batteryCapacity=0;
@@ -43,6 +43,71 @@ class VenusBatteryDevice extends Homey.Device {
     }
   }
 
+  async onRenamed(name) {
+    try {
+      this.log(`Device renamed to: "${name}"`);
+      
+      // Configuration for your specific device
+      const config = {
+        deviceNameRegister: 31000,  // Starting register for device name
+        maxNameLength: 20,          // Maximum name length in bytes
+        encoding: 'ascii',          // Character encoding
+        swapBytes: false,           // Set to true if device expects swapped bytes
+        littleEndian: false,        // Set to true if device uses little-endian
+        padWithNull: true,          // Pad short names with null bytes
+        slaveId: this.settings.slave_id || 1  // Modbus slave ID
+      };
+      
+      // Write the new name to the device
+      //await this.writeDeviceName(name, config);
+      
+    } catch (error) {
+      this.error('Failed to write device name to Modbus device:', error);
+    }
+  }
+
+async writeDeviceName(name, config) {
+    const {
+      deviceNameRegister,
+      maxNameLength,
+      encoding,
+      swapBytes,
+      littleEndian,
+      padWithNull,
+      slaveId
+    } = config;
+    
+    // Convert string to buffer
+    const buffer = this.modbus.stringToModbusBuffer(name, maxNameLength, {
+      encoding,
+      padWithNull,
+      swapBytes
+    });
+    
+    // Convert buffer to register values
+    const registers = bufferToRegisters(buffer, littleEndian);
+    
+    this.log(`Writing name "${name}" as ${registers.length} registers:`, registers);
+    
+    // Write to Modbus device
+    // Method 1: Write all registers at once (if supported)
+    try {
+      await this.modbus.writeMultipleRegisters(slaveId, deviceNameRegister, registers);
+      this.log(`Successfully wrote device name to registers ${deviceNameRegister}-${deviceNameRegister + registers.length - 1}`);
+    } catch (error) {
+      // Method 2: Write registers individually if bulk write fails
+      this.log('Bulk write failed, trying individual register writes...');
+      
+      for (let i = 0; i < registers.length; i++) {
+        await this.modbus.writeSingleRegister(slaveId, deviceNameRegister + i, registers[i]);
+        // Small delay between writes to avoid overwhelming the device
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      
+      this.log(`Successfully wrote device name using individual register writes`);
+    }
+  }
+
   setupModbusHandlers() {
     this.modbus.on('connect', () => {
       this.setAvailable();
@@ -51,7 +116,8 @@ class VenusBatteryDevice extends Homey.Device {
     });
 
     this.modbus.on('error', (error) => {
-      this.setUnavailable(`Connection failed: ${error.message}`);
+      if(!this.modbus.isConnected())
+        this.setUnavailable(`Connection failed: ${error.message}`);
       this.log('Modbus connection error:', error);
     });
 
@@ -117,6 +183,25 @@ class VenusBatteryDevice extends Homey.Device {
       // Battery total energy, this is the capacity of the device, not chaning (0.001kwh resolution)
       const reg_energy = await this.modbus.readHoldingRegisters(slaveId, 32105, 1);
       this.batteryCapacity = ModbusClient.bufferToUint16(Buffer.concat(reg_energy)) * 0.001; // Now in kwh
+
+      const reg_device_name = await this.modbus.readHoldingRegisters(slaveId, 31000, 10);
+      // Simple conversion
+      const deviceName = ModbusClient.bufferToString(reg_device_name);
+      //Now store the collected info in read only settings for easy access to the user
+      this.setSettings({'storage_capacity':this.batteryCapacity+' kwh',
+        'device_name':deviceName
+      });
+      //We only manage these from Homey since the Marstek app does not allow to control these
+      //Force charge power
+      const reg_forcecharge = await this.modbus.readHoldingRegisters(slaveId, 42020, 1);
+      const force_charge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcecharge));
+      console.log('current charge power forced setting :'+force_charge);
+      this.setCapabilityValue('force_charge_power', force_charge).catch(this.error);
+      //Force discharge power
+      const reg_forcedischarge = await this.modbus.readHoldingRegisters(slaveId, 42021, 1);
+      const force_discharge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcedischarge));
+      console.log('current discharge power forced setting :'+force_discharge);
+      this.setCapabilityValue('force_discharge_power', force_discharge).catch(this.error);
     } catch (error) {
       this.log('Device static info error:', error);
       this.setUnavailable(`Retrieval of static info failed: ${error.message}`);
@@ -168,7 +253,7 @@ class VenusBatteryDevice extends Homey.Device {
       this.setCapabilityValue('measure_power', power_ac).catch(this.error);
       //But we also set the discharge and charge versions for easy of use
       if (power_ac < 0) {
-        this.setCapabilityValue('measure_power.imported', power_ac).catch(this.error);
+        this.setCapabilityValue('measure_power.imported', Math.abs(power_ac)).catch(this.error);
         this.setCapabilityValue('measure_power.exported', 0).catch(this.error);
       } else {
         this.setCapabilityValue('measure_power.imported', 0).catch(this.error);
@@ -231,12 +316,12 @@ class VenusBatteryDevice extends Homey.Device {
 
       // Battery total chargin energy (0.001kwh resolution)
       const reg_total_charge_energy = await this.modbus.readHoldingRegisters(slaveId, 33000, 2);
-      const total_charge_energy = ModbusClient.bufferToUint32(Buffer.concat(reg_total_charge_energy)) * 0.001; // Now in kwh
+      const total_charge_energy = ModbusClient.bufferToUint32(Buffer.concat(reg_total_charge_energy)) * 0.01; // Now in kwh
       this.setCapabilityValue('meter_power.imported', total_charge_energy).catch(this.error);
 
       // Battery total discharge energy (0.001kwh resolution)
       const reg_total_discharge_energy = await this.modbus.readHoldingRegisters(slaveId, 33002, 2);
-      const total_discharge_energy = ModbusClient.bufferToInt32(Buffer.concat(reg_total_discharge_energy)) * 0.001; // Now in kwh
+      const total_discharge_energy = ModbusClient.bufferToInt32(Buffer.concat(reg_total_discharge_energy)) * 0.01; // Now in kwh
       this.setCapabilityValue('meter_power.exported', total_discharge_energy).catch(this.error);
 
       // Inverter state
@@ -255,15 +340,26 @@ class VenusBatteryDevice extends Homey.Device {
       const reg_force_mode = await this.modbus.readHoldingRegisters(slaveId, 42010, 1);
       const force_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode));
       const forceModeStr = this.driver.FORCE_MODES[force_mode];
-      this.setCapabilityValue('charge_mode', forceModeStr).catch(this.error);
+      console.log('current charge mode forced :'+force_mode);
+      this.setCapabilityValue('force_charge_mode', forceModeStr).catch(this.error);
       //Work mode
       const reg_work_mode = await this.modbus.readHoldingRegisters(slaveId, 43000, 1);
-      const work_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
+      let work_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
+      const reg_force_mode_state = await this.modbus.readHoldingRegisters(slaveId, 42000, 1);
+      const force_mode_state = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode_state));
+      console.log('force mode enabled? ('+force_mode_state+'): '+(force_mode_state==21930));
+      if(force_mode_state==21930)
+        work_mode=3;
+      console.log('workmode: '+work_mode);
       const workModeStr = this.driver.WORK_MODES[work_mode];
       this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
-
       //Process my states for events
       this.processStatusFlags(modeStr, 0);
+      //Get current force SOC target
+      const reg_force_soc = await this.modbus.readHoldingRegisters(slaveId, 42011, 1);
+      const force_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_force_soc));
+      console.log('Force charge target: '+force_soc+'%')
+      this.setCapabilityValue('force_charge_target', force_soc).catch(this.error);
 
     } catch (error) {
       this.log('Error processing system data:', error);
@@ -370,20 +466,50 @@ class VenusBatteryDevice extends Homey.Device {
     this.previousValues.temperature = temperature;
   }
 
+  validateControlRequirement()
+  {
+    return new Promise((resolve, reject) => {
+      const currentChargeMode = this.getCapabilityValue('user_work_mode');
+      if(currentChargeMode!=='control_mode')
+      {
+        this.setWarning('These controls only work in force control mode');
+        return reject(new Error('Failed to set charge mode'));
+      } else {
+        resolve("Modbus control mode is enabled, proceed");
+      }
+    });  
+  }
+
   // Write operations for supported registers
-  async onCapabilityTargetPower(value) {
+  async onCapabilityForceChargePower(value) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
       
       const slaveId = this.settings.slave_id || 1;
-      await this.modbus.writeSingleRegister(slaveId, 40100, Math.round(value));
-      this.log('Target power set to:', value);
+      await this.modbus.writeSingleRegister(slaveId, 42020, Math.round(value));
+      this.log('Force charge power set to:', value);
       
     } catch (error) {
-      this.log('Error setting target power:', error);
-      throw new Error('Failed to set target power');
+      this.log('Error setting force charge power:', error);
+      throw new Error('Failed to set force charge power');
+    }
+  }
+
+  async onCapabilityForceDisChargePower(value) {
+    try {
+      if (!await this.connectModbus()) {
+        throw new Error('Modbus connection failed');
+      }
+      
+      const slaveId = this.settings.slave_id || 1;
+      await this.modbus.writeSingleRegister(slaveId, 42021, Math.round(value));
+      this.log('Force discharge power set to:', value);
+      
+    } catch (error) {
+      this.log('Error setting force discharge power:', error);
+      throw new Error('Failed to set force discharge power');
     }
   }
 
@@ -392,15 +518,18 @@ class VenusBatteryDevice extends Homey.Device {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
-      const currentChargeMode = this.getCapabilityValue('user_work_mode');
-      if(currentChargeMode!=='manual')
-        return Promise.reject(new Error('Failed to set charge mode'));
+      try {
+        await this.validateControlRequirement();
+      } catch (error) {
+        Promise.reject(error);
+      }
       
       const slaveId = this.settings.slave_id || 1;
       const modeValue = Object.keys(this.driver.FORCE_MODES).find(
         key => this.driver.FORCE_MODES[key] === value
       );
       console.log('Attempt tp set mode to '+modeValue+' based on '+value);
+      //We expect the work mode to be on force_control, else this is ignored
       await this.modbus.writeSingleRegister(slaveId, 42010, modeValue);
       this.log('Charge mode set to:', value);
       
@@ -410,7 +539,9 @@ class VenusBatteryDevice extends Homey.Device {
     }
   }
 
-    async onCapabilityUserWorkMode(value) {
+  //Sets the User Work Mode by turning the device in on eof the three automated operating modes
+  //If the force control mode is selected it will turn on modbus control to allow the charge value to lead the bahavior
+  async onCapabilityUserWorkMode(value) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -421,7 +552,21 @@ class VenusBatteryDevice extends Homey.Device {
         key => this.driver.WORK_MODES[key] === value
       );
       console.log('Attempt to set Work mode to '+userWorkValue+' based on '+value);
-      await this.modbus.writeSingleRegister(slaveId, 43000, userWorkValue);
+      if(userWorkValue==3)
+      {
+        this.log('We set the modbus control flag to true');
+        //Turn on modbus control mode
+        await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
+      } else {
+        this.log('We set the modbus control mode to off');
+        await this.setCapabilityValue('force_charge_mode','none');
+        //Turn off the modbus control mode
+        this.log('We set the modbus control flag to false');
+        await this.modbus.writeSingleRegister(slaveId, 42000, 21947);
+        //Now set the device to the right work mode
+        this.log('We set the new work value');
+        await this.modbus.writeSingleRegister(slaveId, 43000, userWorkValue);
+      }
       this.log('Work mode set to:', value);
       
     } catch (error) {
@@ -430,14 +575,26 @@ class VenusBatteryDevice extends Homey.Device {
     }
   }
 
-  chargeModeToValue(mode) {
-    const modes = {
-      'auto': 0,
-      'force_charge': 1,
-      'force_discharge': 2,
-      'standby': 3
-    };
-    return modes[mode] || 0;
+  async onCapabilityForceChargeTarget(value) {
+    try {
+      if (!await this.connectModbus()) {
+        throw new Error('Modbus connection failed');
+      }
+      
+      try {
+        await this.validateControlRequirement();
+      } catch (error) {
+        Promise.reject(error);
+      }
+
+      const slaveId = this.settings.slave_id || 1;
+      //Set the force SOC Target for forced charge/discharge
+      await this.setCapabilityValue('force_charge_mode','force_soc');
+      await this.modbus.writeSingleRegister(slaveId, 42011, value);
+    } catch (error) {
+      this.log('Error setting force SOC target:', error);
+      throw new Error('Failed to force SOC target');
+    }
   }
 
   // Flow card condition handlers
@@ -503,92 +660,6 @@ class VenusBatteryDevice extends Homey.Device {
     this.disconnectModbus();
   }
 
-  async setCapabilityNames(){
-    await this.setCapabilityOptions('measure_voltage', {
-        title: {
-          en: 'Grid output Voltage',
-          nl: 'Netuitvoer voltage'
-        }
-      });
-    await this.setCapabilityOptions('measure_voltage.battery', {
-        title: {
-          en: 'Battery Voltage',
-          nl: 'Batterij voltage'
-        }
-      });
-    await this.setCapabilityOptions('measure_current', {
-        title: {
-          en: 'Grid output Current',
-          nl: 'Netuitvoer stroom'
-        }
-      });
-    await this.setCapabilityOptions('measure_current.battery', {
-        title: {
-          en: 'Battery Current',
-          nl: 'Batterij stroom'
-        }
-      });
-    await this.setCapabilityOptions('measure_power', {
-        title: {
-          en: 'Grid output Power',
-          nl: 'Netuitvoer vermogen'
-        }
-      });
-    await this.setCapabilityOptions('measure_power.battery', {
-        title: {
-          en: 'Battery Power',
-          nl: 'Batterij vermogen'
-        }
-      });
-    await this.setCapabilityOptions('measure_power.imported', {
-        title: {
-          en: 'Charging Power',
-          nl: 'Laden vermogen'
-        }
-      });
-    await this.setCapabilityOptions('measure_power.exported', {
-        title: {
-          en: 'Discharging Power',
-          nl: 'Ontladen vermogen'
-        }
-      });
-    await this.setCapabilityOptions('meter_power.imported', {
-        title: {
-          en: 'Charged Energy',
-          nl: 'Opgeslagen energie'
-        }
-      });    
-    await this.setCapabilityOptions('meter_power.exported', {
-        title: {
-          en: 'Discharged Energy',
-          nl: 'Geleverd energie'
-        }
-      });
-    await this.setCapabilityOptions('meter_power.capacity', {
-        title: {
-          en: 'Energy available',
-          nl: 'Energie beschikbaar'
-        }
-      });
-    await this.setCapabilityOptions('measure_temperature', {
-        title: {
-          en: 'Internal temperature',
-          nl: 'Interne temperatuur'
-        }
-      });
-    await this.setCapabilityOptions('measure_temperature.mos1', {
-        title: {
-          en: 'MOSFET 1 temperature',
-          nl: 'MOSFET 1 temperatuur'
-        }
-      });
-    await this.setCapabilityOptions('measure_temperature.mos2', {
-        title: {
-          en: 'MOSFET 2 temperature',
-          nl: 'MOSFET 2 temperatuur'
-        }
-      });
-  }
 }
 
 module.exports = VenusBatteryDevice;

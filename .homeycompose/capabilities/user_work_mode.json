@@ -29,6 +29,13 @@
         "en": "Trade on energy tarifs",
         "nl": "Handelen op energie tarieven"
       }
+    },
+    {
+      "id": "control_mode",
+      "title": {
+        "en": "Use force controls",
+        "nl": "Gebruik forceer laadmodus"
+      }
     }
   ],
   "getable": true,

@@ -1,0 +1,23 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Force SOC target",
+    "nl": "Gedwongen Doel SOC"
+  },
+  "desc": {
+    "en": "Target SOC setting for force (dis)charge",
+    "nl": "Doel SOC instelling voor gedwongen (ont)laden"
+  },
+  "units": {
+    "en": "%",
+    "nl": "%"
+  },
+  "min": 11,
+  "max": 100,
+  "step": 1,
+  "decimals": 0,
+  "getable": true,
+  "setable": true,
+  "uiComponent": "slider",
+  "icon": "/assets/target-power.svg"
+}

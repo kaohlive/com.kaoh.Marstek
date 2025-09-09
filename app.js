@@ -2,7 +2,7 @@
 
 const Homey = require('homey');
 
-module.exports = class MyApp extends Homey.App {
+module.exports = class MyMarstekBatteryApp extends Homey.App {
 
   /**
    * onInit is called when the app is initialized.

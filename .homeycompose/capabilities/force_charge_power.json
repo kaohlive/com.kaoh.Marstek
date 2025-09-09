@@ -1,20 +1,20 @@
 {
   "type": "number",
   "title": {
-    "en": "Target Power",
-    "nl": "Doelvermogen"
+    "en": "Force charge power",
+    "nl": "Gedwongen laad vermogen"
   },
   "desc": {
-    "en": "Target power setting for battery operation",
-    "nl": "Doelvermogen instelling voor batterij werking"
+    "en": "Power setting for forced charge",
+    "nl": "Vermogen instelling voor gedwongen laden"
   },
   "units": {
     "en": "W",
     "nl": "W"
   },
-  "min": -2500,
+  "min": 0,
   "max": 2500,
-  "step": 50,
+  "step": 5,
   "decimals": 0,
   "getable": true,
   "setable": true,
