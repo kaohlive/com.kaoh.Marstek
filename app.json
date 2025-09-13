@@ -2,7 +2,7 @@
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
   "version": "1.0.0",
-  "brandColor": "#82BC41",
+  "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "platformVersion": 2,
@@ -10,10 +10,10 @@
     "local"
   ],
   "name": {
-    "en": "Marstek Home Battery"
+    "en": "Marstek Energy Storage"
   },
   "description": {
-    "en": "Control and monitor Marstek home battery systems via Modbus TCP"
+    "en": "Control and monitor Marstek energy storage systems via Modbus TCP"
   },
   "category": [
     "energy"
@@ -78,16 +78,15 @@
           "en": "Battery started discharging",
           "nl": "Batterij is gaan ontladen"
         },
+        "titleFormatted": {
+          "en": "Battery started discharging",
+          "nl": "Batterij is gaan ontladen"
+        },
         "args": [
           {
             "type": "device",
             "name": "device",
             "filter": "driver_id=venus"
-          },
-          {
-            "name": "device",
-            "type": "device",
-            "filter": "driver_id=venus_battery"
           }
         ]
       },
@@ -143,34 +142,6 @@
             "title": {
               "en": "Threshold (%)",
               "nl": "Drempel (%)"
-            }
-          }
-        ]
-      },
-      {
-        "id": "operation_mode_changed",
-        "title": {
-          "en": "Operation mode changed",
-          "nl": "Bedrijfsmodus gewijzigd"
-        },
-        "titleFormatted": {
-          "en": "Operation mode changed",
-          "nl": "Bedrijfsmodus gewijzigd"
-        },
-        "args": [
-          {
-            "type": "device",
-            "name": "device",
-            "filter": "driver_id=venus"
-          }
-        ],
-        "tokens": [
-          {
-            "name": "mode",
-            "type": "string",
-            "title": {
-              "en": "Mode",
-              "nl": "Modus"
             }
           }
         ]
@@ -258,9 +229,757 @@
             }
           }
         ]
+      },
+      {
+        "id": "backup_mode_changed",
+        "title": {
+          "en": "Battery backup mode changed",
+          "nl": "Batterij backup modus is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Battery backup mode changed to [[mode]]",
+          "nl": "Batterij backup modus is veranderd naar [[mode]]"
+        },
+        "hint": {
+          "en": "Triggered when battery backup mode is enabled or disabled",
+          "nl": "Geactiveerd wanneer batterij backup modus wordt in- of uitgeschakeld"
+        },
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "boolean",
+            "title": {
+              "en": "Backup Mode",
+              "nl": "Backup Modus"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "true",
+                "label": {
+                  "en": "Backup Active",
+                  "nl": "Backup Actief"
+                }
+              },
+              {
+                "id": "false",
+                "label": {
+                  "en": "Normal Mode",
+                  "nl": "Normale Modus"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "force_charge_mode_changed",
+        "title": {
+          "en": "Force charge mode changed",
+          "nl": "Gedwongen laadmodus is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force charge mode changed to [[mode]]",
+          "nl": "Gedwongen laadmodus is veranderd naar [[mode]]"
+        },
+        "hint": {
+          "en": "Triggered when force charge mode changes",
+          "nl": "Geactiveerd wanneer gedwongen laadmodus verandert"
+        },
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "string",
+            "title": {
+              "en": "Force Charge Mode",
+              "nl": "Gedwongen Laadmodus"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "none",
+                "label": {
+                  "en": "Force mode Off",
+                  "nl": "Gedwongen mode uit"
+                }
+              },
+              {
+                "id": "force_charge",
+                "label": {
+                  "en": "Force Charge",
+                  "nl": "Forceer Laden"
+                }
+              },
+              {
+                "id": "force_discharge",
+                "label": {
+                  "en": "Force Discharge",
+                  "nl": "Forceer Ontladen"
+                }
+              },
+              {
+                "id": "force_soc",
+                "label": {
+                  "en": "Force to SOC target",
+                  "nl": "Forceer tot SOC doel"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "operation_mode_changed",
+        "title": {
+          "en": "Operation mode changed",
+          "nl": "Bedrijfsmodus is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Operation mode changed to [[mode]]",
+          "nl": "Bedrijfsmodus is veranderd naar [[mode]]"
+        },
+        "hint": {
+          "en": "Triggered when battery operation mode changes",
+          "nl": "Geactiveerd wanneer batterij bedrijfsmodus verandert"
+        },
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "string",
+            "title": {
+              "en": "Operation Mode",
+              "nl": "Bedrijfsmodus"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "sleep",
+                "label": {
+                  "en": "Sleep",
+                  "nl": "slaapstand"
+                }
+              },
+              {
+                "id": "standby",
+                "label": {
+                  "en": "Standby",
+                  "nl": "Stand-by"
+                }
+              },
+              {
+                "id": "charge",
+                "label": {
+                  "en": "Charging",
+                  "nl": "Laden"
+                }
+              },
+              {
+                "id": "discharge",
+                "label": {
+                  "en": "Discharging",
+                  "nl": "Ontladen"
+                }
+              },
+              {
+                "id": "backup",
+                "label": {
+                  "en": "Backup mode",
+                  "nl": "Backup"
+                }
+              },
+              {
+                "id": "update",
+                "label": {
+                  "en": "OTA upgrade",
+                  "nl": "software upgrade"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "user_work_mode_changed",
+        "title": {
+          "en": "Work mode changed",
+          "nl": "Optimalizatie modus is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Work mode changed to [[mode]]",
+          "nl": "Optimalizatie modus is veranderd naar [[mode]]"
+        },
+        "hint": {
+          "en": "Triggered when work mode changes",
+          "nl": "Geactiveerd wanneer optimalizatie modus verandert"
+        },
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "string",
+            "title": {
+              "en": "Work Mode",
+              "nl": "Optimalizatie Modus"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "manual",
+                "label": {
+                  "en": "Manual",
+                  "nl": "Handmatig"
+                }
+              },
+              {
+                "id": "anti_feed",
+                "label": {
+                  "en": "Grid zero mode",
+                  "nl": "0 op de meter"
+                }
+              },
+              {
+                "id": "trade_mode",
+                "label": {
+                  "en": "Trade on energy tarifs",
+                  "nl": "Handelen op energie tarieven"
+                }
+              },
+              {
+                "id": "control_mode",
+                "label": {
+                  "en": "Use force controls",
+                  "nl": "Gebruik forceer laadmodus"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "force_charge_power_changed",
+        "title": {
+          "en": "Force charge power changed",
+          "nl": "Gedwongen laad vermogen is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force charge power changed to [[power]] W",
+          "nl": "Gedwongen laad vermogen is veranderd naar [[power]] W"
+        },
+        "hint": {
+          "en": "Triggered when force charge power setting changes",
+          "nl": "Geactiveerd wanneer gedwongen laad vermogen instelling verandert"
+        },
+        "tokens": [
+          {
+            "name": "power",
+            "type": "number",
+            "title": {
+              "en": "Power",
+              "nl": "Vermogen"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_discharge_power_changed",
+        "title": {
+          "en": "Force discharge power changed",
+          "nl": "Gedwongen ontlaad vermogen is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force discharge power changed to [[power]] W",
+          "nl": "Gedwongen ontlaad vermogen is veranderd naar [[power]] W"
+        },
+        "hint": {
+          "en": "Triggered when force discharge power setting changes",
+          "nl": "Geactiveerd wanneer gedwongen ontlaad vermogen instelling verandert"
+        },
+        "tokens": [
+          {
+            "name": "power",
+            "type": "number",
+            "title": {
+              "en": "Power",
+              "nl": "Vermogen"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_charge_target_changed",
+        "title": {
+          "en": "Force SOC target changed",
+          "nl": "Gedwongen SOC doel is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force SOC target changed to [[target]]%",
+          "nl": "Gedwongen SOC doel is veranderd naar [[target]]%"
+        },
+        "hint": {
+          "en": "Triggered when force SOC target setting changes",
+          "nl": "Geactiveerd wanneer gedwongen SOC doel instelling verandert"
+        },
+        "tokens": [
+          {
+            "name": "target",
+            "type": "number",
+            "title": {
+              "en": "SOC Target",
+              "nl": "SOC Doel"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "target",
+            "type": "range",
+            "title": {
+              "en": "SOC Target (%)",
+              "nl": "SOC Doel (%)"
+            },
+            "min": 11,
+            "max": 100,
+            "step": 1
+          }
+        ]
       }
     ],
     "conditions": [
+      {
+        "id": "backup_mode_is",
+        "title": {
+          "en": "Battery backup mode is",
+          "nl": "Batterij backup modus is"
+        },
+        "titleFormatted": {
+          "en": "Battery backup mode is [[mode]]",
+          "nl": "Batterij backup modus is [[mode]]"
+        },
+        "hint": {
+          "en": "Check if battery backup mode is enabled or disabled",
+          "nl": "Controleer of batterij backup modus is ingeschakeld of uitgeschakeld"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "true",
+                "label": {
+                  "en": "Backup Active",
+                  "nl": "Backup Actief"
+                }
+              },
+              {
+                "id": "false",
+                "label": {
+                  "en": "Normal Mode",
+                  "nl": "Normale Modus"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "force_charge_mode_is",
+        "title": {
+          "en": "Force charge mode is",
+          "nl": "Gedwongen laadmodus is"
+        },
+        "titleFormatted": {
+          "en": "Force charge mode is [[mode]]",
+          "nl": "Gedwongen laadmodus is [[mode]]"
+        },
+        "hint": {
+          "en": "Check current force charge mode",
+          "nl": "Controleer huidige gedwongen laadmodus"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "none",
+                "label": {
+                  "en": "Force mode Off",
+                  "nl": "Gedwongen mode uit"
+                }
+              },
+              {
+                "id": "force_charge",
+                "label": {
+                  "en": "Force Charge",
+                  "nl": "Forceer Laden"
+                }
+              },
+              {
+                "id": "force_discharge",
+                "label": {
+                  "en": "Force Discharge",
+                  "nl": "Forceer Ontladen"
+                }
+              },
+              {
+                "id": "force_soc",
+                "label": {
+                  "en": "Force to SOC target",
+                  "nl": "Forceer tot SOC doel"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "operation_mode_is",
+        "title": {
+          "en": "Operation mode is",
+          "nl": "Bedrijfsmodus is"
+        },
+        "titleFormatted": {
+          "en": "Operation mode is [[mode]]",
+          "nl": "Bedrijfsmodus is [[mode]]"
+        },
+        "hint": {
+          "en": "Check current battery operation mode",
+          "nl": "Controleer huidige batterij bedrijfsmodus"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "sleep",
+                "label": {
+                  "en": "Sleep",
+                  "nl": "slaapstand"
+                }
+              },
+              {
+                "id": "standby",
+                "label": {
+                  "en": "Standby",
+                  "nl": "Stand-by"
+                }
+              },
+              {
+                "id": "charge",
+                "label": {
+                  "en": "Charging",
+                  "nl": "Laden"
+                }
+              },
+              {
+                "id": "discharge",
+                "label": {
+                  "en": "Discharging",
+                  "nl": "Ontladen"
+                }
+              },
+              {
+                "id": "backup",
+                "label": {
+                  "en": "Backup mode",
+                  "nl": "Backup"
+                }
+              },
+              {
+                "id": "update",
+                "label": {
+                  "en": "OTA upgrade",
+                  "nl": "software upgrade"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "user_work_mode_is",
+        "title": {
+          "en": "Work mode is",
+          "nl": "Optimalizatie modus is"
+        },
+        "titleFormatted": {
+          "en": "Work mode is [[mode]]",
+          "nl": "Optimalizatie modus is [[mode]]"
+        },
+        "hint": {
+          "en": "Check current work mode",
+          "nl": "Controleer huidige optimalizatie modus"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "manual",
+                "label": {
+                  "en": "Manual",
+                  "nl": "Handmatig"
+                }
+              },
+              {
+                "id": "anti_feed",
+                "label": {
+                  "en": "Grid zero mode",
+                  "nl": "0 op de meter"
+                }
+              },
+              {
+                "id": "trade_mode",
+                "label": {
+                  "en": "Trade on energy tarifs",
+                  "nl": "Handelen op energie tarieven"
+                }
+              },
+              {
+                "id": "control_mode",
+                "label": {
+                  "en": "Use force controls",
+                  "nl": "Gebruik forceer laadmodus"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "force_charge_power_greater_than",
+        "title": {
+          "en": "Force charge power is greater than",
+          "nl": "Gedwongen laad vermogen is groter dan"
+        },
+        "titleFormatted": {
+          "en": "Force charge power is greater than [[power]] W",
+          "nl": "Gedwongen laad vermogen is groter dan [[power]] W"
+        },
+        "hint": {
+          "en": "Check if force charge power is above a threshold",
+          "nl": "Controleer of gedwongen laad vermogen boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_discharge_power_greater_than",
+        "title": {
+          "en": "Force discharge power is greater than",
+          "nl": "Gedwongen ontlaad vermogen is groter dan"
+        },
+        "titleFormatted": {
+          "en": "Force discharge power is greater than [[power]] W",
+          "nl": "Gedwongen ontlaad vermogen is groter dan [[power]] W"
+        },
+        "hint": {
+          "en": "Check if force discharge power is above a threshold",
+          "nl": "Controleer of gedwongen ontlaad vermogen boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_charge_target_greater_than",
+        "title": {
+          "en": "Force SOC target is greater than",
+          "nl": "Gedwongen SOC doel is groter dan"
+        },
+        "titleFormatted": {
+          "en": "Force SOC target is greater than [[target]]%",
+          "nl": "Gedwongen SOC doel is groter dan [[target]]%"
+        },
+        "hint": {
+          "en": "Check if force SOC target is above a threshold",
+          "nl": "Controleer of gedwongen SOC doel boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "target",
+            "type": "range",
+            "title": {
+              "en": "SOC Target (%)",
+              "nl": "SOC Doel (%)"
+            },
+            "min": 11,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
       {
         "id": "is_charging",
         "title": {
@@ -348,58 +1067,6 @@
         ]
       },
       {
-        "id": "operation_mode_is",
-        "title": {
-          "en": "Operation mode is",
-          "nl": "Bedrijfsmodus is"
-        },
-        "titleFormatted": {
-          "en": "Operation mode is [[mode]]",
-          "nl": "Bedrijfsmodus is [[mode]]"
-        },
-        "args": [
-          {
-            "type": "device",
-            "name": "device",
-            "filter": "driver_id=venus"
-          },
-          {
-            "name": "mode",
-            "type": "dropdown",
-            "values": [
-              {
-                "id": "standby",
-                "title": {
-                  "en": "Standby",
-                  "nl": "Standby"
-                }
-              },
-              {
-                "id": "charge",
-                "title": {
-                  "en": "Charge",
-                  "nl": "Laden"
-                }
-              },
-              {
-                "id": "discharge",
-                "title": {
-                  "en": "Discharge",
-                  "nl": "Ontladen"
-                }
-              },
-              {
-                "id": "maintenance",
-                "title": {
-                  "en": "Maintenance",
-                  "nl": "Onderhoud"
-                }
-              }
-            ]
-          }
-        ]
-      },
-      {
         "id": "has_fault",
         "title": {
           "en": "Battery has fault",
@@ -448,11 +1115,15 @@
         "id": "set_charge_mode",
         "title": {
           "en": "Set charge mode",
-          "nl": "Stel laadmodus in"
+          "nl": "Laadmodus instellen"
         },
         "titleFormatted": {
           "en": "Set charge mode to [[mode]]",
-          "nl": "Stel laadmodus in op [[mode]]"
+          "nl": "Laadmodus instellen op [[mode]]"
+        },
+        "hint": {
+          "en": "Change battery charge mode",
+          "nl": "Batterij laadmodus veranderen"
         },
         "args": [
           {
@@ -463,33 +1134,23 @@
           {
             "name": "mode",
             "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
             "values": [
               {
                 "id": "auto",
-                "title": {
-                  "en": "Auto",
+                "label": {
+                  "en": "Automatic",
                   "nl": "Automatisch"
                 }
               },
               {
-                "id": "force_charge",
-                "title": {
-                  "en": "Force charge",
-                  "nl": "Geforceerd laden"
-                }
-              },
-              {
-                "id": "force_discharge",
-                "title": {
-                  "en": "Force discharge",
-                  "nl": "Geforceerd ontladen"
-                }
-              },
-              {
-                "id": "standby",
-                "title": {
-                  "en": "Standby",
-                  "nl": "Standby"
+                "id": "manual",
+                "label": {
+                  "en": "Manual",
+                  "nl": "Handmatig"
                 }
               }
             ]
@@ -500,11 +1161,15 @@
         "id": "set_target_power",
         "title": {
           "en": "Set target power",
-          "nl": "Stel doelvermogen in"
+          "nl": "Doelvermogen instellen"
         },
         "titleFormatted": {
-          "en": "Set target power to [[power]]W",
-          "nl": "Stel doelvermogen in op [[power]]W"
+          "en": "Set target power to [[power]] W",
+          "nl": "Doelvermogen instellen op [[power]] W"
+        },
+        "hint": {
+          "en": "Set battery target power",
+          "nl": "Batterij doelvermogen instellen"
         },
         "args": [
           {
@@ -514,14 +1179,279 @@
           },
           {
             "name": "power",
-            "type": "number",
-            "min": -10000,
-            "max": 10000,
-            "step": 100,
+            "type": "range",
             "title": {
               "en": "Power (W)",
               "nl": "Vermogen (W)"
-            }
+            },
+            "min": -2500,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "set_backup_mode",
+        "title": {
+          "en": "Set battery backup mode",
+          "nl": "Batterij backup modus instellen"
+        },
+        "titleFormatted": {
+          "en": "Set battery backup mode to [[mode]]",
+          "nl": "Batterij backup modus instellen op [[mode]]"
+        },
+        "hint": {
+          "en": "Enable or disable battery backup mode",
+          "nl": "Batterij backup modus in- of uitschakelen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "true",
+                "label": {
+                  "en": "Backup Active",
+                  "nl": "Backup Actief"
+                }
+              },
+              {
+                "id": "false",
+                "label": {
+                  "en": "Normal Mode",
+                  "nl": "Normale Modus"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_force_charge_mode",
+        "title": {
+          "en": "Set force charge mode",
+          "nl": "Gedwongen laadmodus instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force charge mode to [[mode]]",
+          "nl": "Gedwongen laadmodus instellen op [[mode]]"
+        },
+        "hint": {
+          "en": "Change battery charging mode",
+          "nl": "Batterij laadmodus veranderen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "none",
+                "label": {
+                  "en": "Force mode Off",
+                  "nl": "Gedwongen mode uit"
+                }
+              },
+              {
+                "id": "force_charge",
+                "label": {
+                  "en": "Force Charge",
+                  "nl": "Forceer Laden"
+                }
+              },
+              {
+                "id": "force_discharge",
+                "label": {
+                  "en": "Force Discharge",
+                  "nl": "Forceer Ontladen"
+                }
+              },
+              {
+                "id": "force_soc",
+                "label": {
+                  "en": "Force to SOC target",
+                  "nl": "Forceer tot SOC doel"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_user_work_mode",
+        "title": {
+          "en": "Set work mode",
+          "nl": "Optimalizatie modus instellen"
+        },
+        "titleFormatted": {
+          "en": "Set work mode to [[mode]]",
+          "nl": "Optimalizatie modus instellen op [[mode]]"
+        },
+        "hint": {
+          "en": "Change work mode selection",
+          "nl": "Optimalizatie modus selectie veranderen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "manual",
+                "label": {
+                  "en": "Manual",
+                  "nl": "Handmatig"
+                }
+              },
+              {
+                "id": "anti_feed",
+                "label": {
+                  "en": "Grid zero mode",
+                  "nl": "0 op de meter"
+                }
+              },
+              {
+                "id": "trade_mode",
+                "label": {
+                  "en": "Trade on energy tarifs",
+                  "nl": "Handelen op energie tarieven"
+                }
+              },
+              {
+                "id": "control_mode",
+                "label": {
+                  "en": "Use force controls",
+                  "nl": "Gebruik forceer laadmodus"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "set_force_charge_power",
+        "title": {
+          "en": "Set force charge power",
+          "nl": "Gedwongen laad vermogen instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force charge power to [[power]] W",
+          "nl": "Gedwongen laad vermogen instellen op [[power]] W"
+        },
+        "hint": {
+          "en": "Set power setting for forced charge",
+          "nl": "Vermogen instelling voor gedwongen laden instellen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "set_force_discharge_power",
+        "title": {
+          "en": "Set force discharge power",
+          "nl": "Gedwongen ontlaad vermogen instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force discharge power to [[power]] W",
+          "nl": "Gedwongen ontlaad vermogen instellen op [[power]] W"
+        },
+        "hint": {
+          "en": "Set power setting for forced discharge",
+          "nl": "Vermogen instelling voor gedwongen ontladen instellen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "set_force_charge_target",
+        "title": {
+          "en": "Set force SOC target",
+          "nl": "Gedwongen SOC doel instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force SOC target to [[target]]%",
+          "nl": "Gedwongen SOC doel instellen op [[target]]%"
+        },
+        "hint": {
+          "en": "Set target SOC setting for force (dis)charge",
+          "nl": "Doel SOC instelling voor gedwongen (ont)laden instellen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "target",
+            "type": "range",
+            "title": {
+              "en": "SOC Target (%)",
+              "nl": "SOC Doel (%)"
+            },
+            "min": 11,
+            "max": 100,
+            "step": 1
           }
         ]
       }
@@ -530,14 +1460,22 @@
   "drivers": [
     {
       "name": {
-        "en": "Venus Battery - EW11"
+        "en": "Venus Battery"
       },
       "energy": {
         "homeBattery": true,
+        "batteries": [
+          "INTERNAL"
+        ],
         "meterPowerImportedCapability": "meter_power.imported",
         "meterPowerExportedCapability": "meter_power.exported"
       },
       "class": "battery",
+      "images": {
+        "large": "/drivers/venus/assets/images/large.png",
+        "small": "/drivers/venus/assets/images/small.png",
+        "xlarge": "/drivers/venus/assets/images/xlarge.png"
+      },
       "pair": [
         {
           "id": "list_devices",
@@ -577,7 +1515,8 @@
         "force_charge_target",
         "measure_battery",
         "force_discharge_power",
-        "force_charge_power"
+        "force_charge_power",
+        "backup_mode"
       ],
       "capabilitiesOptions": {
         "measure_voltage": {
@@ -754,6 +1693,52 @@
     }
   ],
   "capabilities": {
+    "backup_mode": {
+      "type": "boolean",
+      "title": {
+        "en": "Battery Backup Mode",
+        "nl": "Batterij Backup Modus"
+      },
+      "desc": {
+        "en": "Enable or disable battery backup mode for the device",
+        "nl": "Batterij backup modus in- of uitschakelen voor het apparaat"
+      },
+      "chartType": "stepLine",
+      "decimals": 0,
+      "getable": true,
+      "setable": true,
+      "uiComponent": "toggle",
+      "uiQuickAction": false,
+      "icon": "/assets/backup-mode.svg",
+      "insights": true,
+      "insightsTitleTrue": {
+        "en": "Battery backup enabled",
+        "nl": "Batterij backup ingeschakeld"
+      },
+      "insightsTitleFalse": {
+        "en": "Battery backup disabled",
+        "nl": "Batterij backup uitgeschakeld"
+      },
+      "options": {
+        "showTitle": true,
+        "showValue": true,
+        "invert": false,
+        "label": {
+          "true": {
+            "en": "Backup Active",
+            "nl": "Backup Actief"
+          },
+          "false": {
+            "en": "Normal Mode",
+            "nl": "Normale Modus"
+          }
+        }
+      },
+      "preventInsights": false,
+      "units": {
+        "en": ""
+      }
+    },
     "force_charge_mode": {
       "type": "enum",
       "title": {
@@ -796,8 +1781,7 @@
       ],
       "getable": true,
       "setable": true,
-      "uiComponent": "picker",
-      "icon": "/assets/charge-mode.svg"
+      "uiComponent": "picker"
     },
     "force_charge_power": {
       "type": "number",
@@ -819,8 +1803,7 @@
       "decimals": 0,
       "getable": true,
       "setable": true,
-      "uiComponent": "slider",
-      "icon": "/assets/target-power.svg"
+      "uiComponent": "slider"
     },
     "force_charge_target": {
       "type": "number",
@@ -842,8 +1825,7 @@
       "decimals": 0,
       "getable": true,
       "setable": true,
-      "uiComponent": "slider",
-      "icon": "/assets/target-power.svg"
+      "uiComponent": "slider"
     },
     "force_discharge_power": {
       "type": "number",
@@ -865,8 +1847,7 @@
       "decimals": 0,
       "getable": true,
       "setable": true,
-      "uiComponent": "slider",
-      "icon": "/assets/target-power.svg"
+      "uiComponent": "slider"
     },
     "operation_mode": {
       "type": "enum",
@@ -969,8 +1950,7 @@
       ],
       "getable": true,
       "setable": true,
-      "uiComponent": "picker",
-      "icon": "/assets/charge-mode.svg"
+      "uiComponent": "picker"
     }
   }
 }

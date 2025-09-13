@@ -18,6 +18,5 @@
   "decimals": 0,
   "getable": true,
   "setable": true,
-  "uiComponent": "slider",
-  "icon": "/assets/target-power.svg"
+  "uiComponent": "slider"
 }

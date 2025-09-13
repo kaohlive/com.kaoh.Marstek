@@ -37,62 +37,138 @@ class VenusBatteryDriver extends Homey.Driver {
 
 
   registerFlowCardConditions() {
-    // Is charging condition
-    this.homey.flow.getConditionCard('is_charging')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionIsCharging();
-      });
+  // Existing conditions
+  // Is charging condition
+  this.homey.flow.getConditionCard('is_charging')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionIsCharging();
+    });
 
-    // Is discharging condition
-    this.homey.flow.getConditionCard('is_discharging')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionIsDischarging();
-      });
+  // Is discharging condition
+  this.homey.flow.getConditionCard('is_discharging')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionIsDischarging();
+    });
 
-    // SOC above condition
-    this.homey.flow.getConditionCard('soc_above')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionSOCAbove(args);
-      });
+  // SOC above condition
+  this.homey.flow.getConditionCard('soc_above')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionSOCAbove(args);
+    });
 
-    // SOC below condition
-    this.homey.flow.getConditionCard('soc_below')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionSOCBelow(args);
-      });
+  // SOC below condition
+  this.homey.flow.getConditionCard('soc_below')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionSOCBelow(args);
+    });
 
-    // Operation mode is condition
-    this.homey.flow.getConditionCard('operation_mode_is')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionOperationModeIs(args);
-      });
+  // Operation mode is condition
+  this.homey.flow.getConditionCard('operation_mode_is')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionOperationModeIs(args);
+    });
 
-    // Has fault condition
-    this.homey.flow.getConditionCard('has_fault')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionHasFault();
-      });
+  // Has fault condition
+  this.homey.flow.getConditionCard('has_fault')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionHasFault();
+    });
 
-    // Temperature above condition
-    this.homey.flow.getConditionCard('temperature_above')
-      .registerRunListener(async (args) => {
-        return await args.device.conditionTemperatureAbove(args);
-      });
-  }
+  // Temperature above condition
+  this.homey.flow.getConditionCard('temperature_above')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionTemperatureAbove(args);
+    });
 
-  registerFlowCardActions() {
-    // Set charge mode action
-    this.homey.flow.getActionCard('set_charge_mode')
-      .registerRunListener(async (args) => {
-        return await args.device.actionSetChargeMode(args);
-      });
+  // NEW CONDITIONS FROM CUSTOM CAPABILITIES
+  // Battery backup mode is condition
+  this.homey.flow.getConditionCard('backup_mode_is')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionBackupModeIs(args);
+    });
 
-    // Set target power action
-    this.homey.flow.getActionCard('set_target_power')
-      .registerRunListener(async (args) => {
-        return await args.device.actionSetTargetPower(args);
-      });
-  }
+  // Force charge mode is condition
+  this.homey.flow.getConditionCard('force_charge_mode_is')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionForceChargeModeIs(args);
+    });
+
+  // User work mode is condition
+  this.homey.flow.getConditionCard('user_work_mode_is')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionUserWorkModeIs(args);
+    });
+
+  // Force charge power greater than condition
+  this.homey.flow.getConditionCard('force_charge_power_greater_than')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionForceChargePowerGreaterThan(args);
+    });
+
+  // Force discharge power greater than condition
+  this.homey.flow.getConditionCard('force_discharge_power_greater_than')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionForceDischargePowerGreaterThan(args);
+    });
+
+  // Force charge target greater than condition
+  this.homey.flow.getConditionCard('force_charge_target_greater_than')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionForceChargeTargetGreaterThan(args);
+    });
+}
+
+registerFlowCardActions() {
+  // Existing actions
+  // Set charge mode action
+  this.homey.flow.getActionCard('set_charge_mode')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetChargeMode(args);
+    });
+
+  // Set target power action
+  this.homey.flow.getActionCard('set_target_power')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetTargetPower(args);
+    });
+
+  // NEW ACTIONS FROM CUSTOM CAPABILITIES
+  // Set backup mode action
+  this.homey.flow.getActionCard('set_backup_mode')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetBackupMode(args);
+    });
+
+  // Set force charge mode action
+  this.homey.flow.getActionCard('set_force_charge_mode')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetForceChargeMode(args);
+    });
+
+  // Set user work mode action
+  this.homey.flow.getActionCard('set_user_work_mode')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetUserWorkMode(args);
+    });
+
+  // Set force charge power action
+  this.homey.flow.getActionCard('set_force_charge_power')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetForceChargePower(args);
+    });
+
+  // Set force discharge power action
+  this.homey.flow.getActionCard('set_force_discharge_power')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetForceDischargePower(args);
+    });
+
+  // Set force charge target action
+  this.homey.flow.getActionCard('set_force_charge_target')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetForceChargeTarget(args);
+    });
+}
 
   async onPairListDevices() {
     return [

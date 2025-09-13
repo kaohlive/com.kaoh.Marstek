@@ -24,12 +24,9 @@ class VenusBatteryDevice extends Homey.Device {
     this.startPolling();
     
     // Register capability listeners for writable registers
-    this.registerCapabilityListener('force_charge_mode', this.onCapabilityChargeMode.bind(this));
-    this.registerCapabilityListener('user_work_mode', this.onCapabilityUserWorkMode.bind(this));
-    this.registerCapabilityListener('force_charge_target', this.onCapabilityForceChargeTarget.bind(this));
-    this.registerCapabilityListener('force_charge_power', this.onCapabilityForceChargePower.bind(this));
-    this.registerCapabilityListener('force_discharge_power', this.onCapabilityForceDisChargePower.bind(this));
-
+    this.setupCapabilityListeners();
+    //Register flow trigger cards
+    this.registerFlowCardTriggers();
     //Setup some global vars that we get from the device on init
     this.batteryCapacity=0;
   }
@@ -360,6 +357,11 @@ async writeDeviceName(name, config) {
       const force_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_force_soc));
       console.log('Force charge target: '+force_soc+'%')
       this.setCapabilityValue('force_charge_target', force_soc).catch(this.error);
+      //Get current backup mode
+      const reg_backup_mode = await this.modbus.readHoldingRegisters(slaveId, 41200, 1);
+      const backup_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_backup_mode));
+      console.log('Backup Mode: '+(backup_mode==0))
+      this.setCapabilityValue('backup_mode', (backup_mode==0)).catch(this.error);
 
     } catch (error) {
       this.log('Error processing system data:', error);
@@ -480,6 +482,27 @@ async writeDeviceName(name, config) {
     });  
   }
 
+  async onCapabilityBackupMode(value) {
+    try {
+      if (!await this.connectModbus()) {
+        throw new Error('Modbus connection failed');
+      }
+      
+      const slaveId = this.settings.slave_id || 1;
+      await this.modbus.writeSingleRegister(slaveId, 41200, (value ? 0 : 1));
+      this.log('Backup mode set to: '+value+', now trigger the worklow card:');
+      if (this.backupModeChangedTrigger && !opts.fromCloudSync) {
+        await this.backupModeChangedTrigger.trigger(this, 
+          { mode: value }, 
+          { mode: value.toString() }
+        );
+      }
+    } catch (error) {
+      this.log('Error setting backup mode:', error);
+      throw new Error('Failed to backup mode');
+    }   
+  }
+
   // Write operations for supported registers
   async onCapabilityForceChargePower(value) {
     try {
@@ -489,8 +512,14 @@ async writeDeviceName(name, config) {
       
       const slaveId = this.settings.slave_id || 1;
       await this.modbus.writeSingleRegister(slaveId, 42020, Math.round(value));
-      this.log('Force charge power set to:', value);
+      this.log('Force charge power set to:'+value+' and trigger the workflow');
       
+      if (this.forceChargePowerChangedTrigger && !opts.fromCloudSync) {
+        await this.forceChargePowerChangedTrigger.trigger(this, 
+          { power: value }, 
+          { power: value }
+        );
+      }
     } catch (error) {
       this.log('Error setting force charge power:', error);
       throw new Error('Failed to set force charge power');
@@ -505,8 +534,13 @@ async writeDeviceName(name, config) {
       
       const slaveId = this.settings.slave_id || 1;
       await this.modbus.writeSingleRegister(slaveId, 42021, Math.round(value));
-      this.log('Force discharge power set to:', value);
-      
+      this.log('Force discharge power set to: '+value+', now trigger flow cards');
+      if (this.forceDischargePowerChangedTrigger && !opts.fromCloudSync) {
+        await this.forceDischargePowerChangedTrigger.trigger(this, 
+          { power: value }, 
+          { power: value }
+        );
+      }
     } catch (error) {
       this.log('Error setting force discharge power:', error);
       throw new Error('Failed to set force discharge power');
@@ -532,6 +566,13 @@ async writeDeviceName(name, config) {
       //We expect the work mode to be on force_control, else this is ignored
       await this.modbus.writeSingleRegister(slaveId, 42010, modeValue);
       this.log('Charge mode set to:', value);
+      //Now trigger the workflow card
+      if (this.forceChargeModeChangedTrigger && !opts.fromCloudSync) {
+        await this.forceChargeModeChangedTrigger.trigger(this, 
+          { mode: value }, 
+          { mode: value }
+        );
+      }
       
     } catch (error) {
       this.log('Error setting charge mode:', error);
@@ -567,7 +608,14 @@ async writeDeviceName(name, config) {
         this.log('We set the new work value');
         await this.modbus.writeSingleRegister(slaveId, 43000, userWorkValue);
       }
-      this.log('Work mode set to:', value);
+      this.log('Work mode set to:'+value+', now trigger the workflow card');
+
+      if (this.userWorkModeChangedTrigger && !opts.fromCloudSync) {
+        await this.userWorkModeChangedTrigger.trigger(this, 
+          { mode: value }, 
+          { mode: value }
+        );
+      }
       
     } catch (error) {
       this.log('Error setting work mode:', error);
@@ -591,6 +639,13 @@ async writeDeviceName(name, config) {
       //Set the force SOC Target for forced charge/discharge
       await this.setCapabilityValue('force_charge_mode','force_soc');
       await this.modbus.writeSingleRegister(slaveId, 42011, value);
+      this.log('Set the force SOC target to '+value+', now trigger the workflow')
+      if (this.forceChargeTargetChangedTrigger && !opts.fromCloudSync) {
+        await this.forceChargeTargetChangedTrigger.trigger(this, 
+          { target: value }, 
+          { target: value }
+        );
+      }
     } catch (error) {
       this.log('Error setting force SOC target:', error);
       throw new Error('Failed to force SOC target');
@@ -660,6 +715,341 @@ async writeDeviceName(name, config) {
     this.disconnectModbus();
   }
 
+  // ============================================
+  // CONDITION METHODS
+  // ============================================
+
+  /**
+   * Check if backup mode matches the specified state
+   * @param {Object} args - Flow card arguments
+   * @param {string} args.mode - "true" or "false" as string
+   * @returns {boolean} - True if condition matches
+   */
+  async conditionBackupModeIs(args) {
+    try {
+      const currentMode = this.getCapabilityValue('backup_mode');
+      const targetMode = args.mode === 'true';
+      
+      this.log(`Checking backup mode: current=${currentMode}, target=${targetMode}`);
+      return currentMode === targetMode;
+    } catch (error) {
+      this.error('Error checking backup mode condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if force charge mode matches the specified mode
+   * @param {Object} args - Flow card arguments
+   * @param {string} args.mode - Mode ID (none, force_charge, force_discharge, force_soc)
+   * @returns {boolean} - True if condition matches
+   */
+  async conditionForceChargeModeIs(args) {
+    try {
+      const currentMode = this.getCapabilityValue('force_charge_mode');
+      
+      this.log(`Checking force charge mode: current=${currentMode}, target=${args.mode}`);
+      return currentMode === args.mode;
+    } catch (error) {
+      this.error('Error checking force charge mode condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if user work mode matches the specified mode
+   * @param {Object} args - Flow card arguments
+   * @param {string} args.mode - Mode ID (manual, anti_feed, trade_mode, control_mode)
+   * @returns {boolean} - True if condition matches
+   */
+  async conditionUserWorkModeIs(args) {
+    try {
+      const currentMode = this.getCapabilityValue('user_work_mode');
+      
+      this.log(`Checking user work mode: current=${currentMode}, target=${args.mode}`);
+      return currentMode === args.mode;
+    } catch (error) {
+      this.error('Error checking user work mode condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if force charge power is greater than threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.power - Power threshold in watts
+   * @returns {boolean} - True if current power is greater than threshold
+   */
+  async conditionForceChargePowerGreaterThan(args) {
+    try {
+      const currentPower = this.getCapabilityValue('force_charge_power') || 0;
+      const threshold = Number(args.power);
+      
+      this.log(`Checking force charge power: current=${currentPower}W, threshold=${threshold}W`);
+      return currentPower > threshold;
+    } catch (error) {
+      this.error('Error checking force charge power condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if force discharge power is greater than threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.power - Power threshold in watts
+   * @returns {boolean} - True if current power is greater than threshold
+   */
+  async conditionForceDischargePowerGreaterThan(args) {
+    try {
+      const currentPower = this.getCapabilityValue('force_discharge_power') || 0;
+      const threshold = Number(args.power);
+      
+      this.log(`Checking force discharge power: current=${currentPower}W, threshold=${threshold}W`);
+      return currentPower > threshold;
+    } catch (error) {
+      this.error('Error checking force discharge power condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if force charge target is greater than threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.target - SOC threshold in percentage
+   * @returns {boolean} - True if current target is greater than threshold
+   */
+  async conditionForceChargeTargetGreaterThan(args) {
+    try {
+      const currentTarget = this.getCapabilityValue('force_charge_target') || 0;
+      const threshold = Number(args.target);
+      
+      this.log(`Checking force charge target: current=${currentTarget}%, threshold=${threshold}%`);
+      return currentTarget > threshold;
+    } catch (error) {
+      this.error('Error checking force charge target condition:', error);
+      return false;
+    }
+  }
+
+  // ============================================
+  // ACTION METHODS
+  // ============================================
+
+  /**
+   * Set backup mode on or off
+   * @param {Object} args - Flow card arguments
+   * @param {string} args.mode - "true" or "false" as string
+   * @returns {boolean} - Success status
+   */
+  async actionSetBackupMode(args) {
+    try {
+      const targetMode = args.mode === 'true';
+      
+      this.log(`Setting backup mode to: ${targetMode}`);
+      await this.setCapabilityValue('backup_mode', targetMode);
+      
+      // Trigger the flow card if registered
+      if (this.backupModeChangedTrigger) {
+        await this.backupModeChangedTrigger.trigger(this, { mode: targetMode }, { mode: args.mode });
+      }
+      
+      return true;
+    } catch (error) {
+      this.error('Error setting backup mode:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set force charge mode
+   * @param {Object} args - Flow card arguments
+   * @param {string} args.mode - Mode ID (none, force_charge, force_discharge, force_soc)
+   * @returns {boolean} - Success status
+   */
+  async actionSetForceChargeMode(args) {
+    try {
+      this.log(`Setting force charge mode to: ${args.mode}`);
+      await this.setCapabilityValue('force_charge_mode', args.mode);
+      
+      // Trigger the flow card if registered
+      if (this.forceChargeModeChangedTrigger) {
+        await this.forceChargeModeChangedTrigger.trigger(this, { mode: args.mode }, { mode: args.mode });
+      }
+      
+      return true;
+    } catch (error) {
+      this.error('Error setting force charge mode:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set user work mode
+   * @param {Object} args - Flow card arguments
+   * @param {string} args.mode - Mode ID (manual, anti_feed, trade_mode, control_mode)
+   * @returns {boolean} - Success status
+   */
+  async actionSetUserWorkMode(args) {
+    try {
+      this.log(`Setting user work mode to: ${args.mode}`);
+      await this.setCapabilityValue('user_work_mode', args.mode);
+      
+      // Trigger the flow card if registered
+      if (this.userWorkModeChangedTrigger) {
+        await this.userWorkModeChangedTrigger.trigger(this, { mode: args.mode }, { mode: args.mode });
+      }
+      
+      return true;
+    } catch (error) {
+      this.error('Error setting user work mode:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set force charge power
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.power - Power setting in watts (0-2500)
+   * @returns {boolean} - Success status
+   */
+  async actionSetForceChargePower(args) {
+    try {
+      const power = Number(args.power);
+      
+      // Validate range
+      if (power < 0 || power > 2500) {
+        throw new Error(`Invalid power value: ${power}W. Must be between 0-2500W`);
+      }
+      
+      this.log(`Setting force charge power to: ${power}W`);
+      await this.setCapabilityValue('force_charge_power', power);
+      
+      // Trigger the flow card if registered
+      if (this.forceChargePowerChangedTrigger) {
+        await this.forceChargePowerChangedTrigger.trigger(this, { power: power }, { power: power });
+      }
+      
+      return true;
+    } catch (error) {
+      this.error('Error setting force charge power:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set force discharge power
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.power - Power setting in watts (0-2500)
+   * @returns {boolean} - Success status
+   */
+  async actionSetForceDischargePower(args) {
+    try {
+      const power = Number(args.power);
+      
+      // Validate range
+      if (power < 0 || power > 2500) {
+        throw new Error(`Invalid power value: ${power}W. Must be between 0-2500W`);
+      }
+      
+      this.log(`Setting force discharge power to: ${power}W`);
+      await this.setCapabilityValue('force_discharge_power', power);
+      
+      // Trigger the flow card if registered
+      if (this.forceDischargePowerChangedTrigger) {
+        await this.forceDischargePowerChangedTrigger.trigger(this, { power: power }, { power: power });
+      }
+      
+      return true;
+    } catch (error) {
+      this.error('Error setting force discharge power:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set force charge target (SOC)
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.target - SOC target in percentage (11-100)
+   * @returns {boolean} - Success status
+   */
+  async actionSetForceChargeTarget(args) {
+    try {
+      const target = Number(args.target);
+      
+      // Validate range
+      if (target < 11 || target > 100) {
+        throw new Error(`Invalid SOC target: ${target}%. Must be between 11-100%`);
+      }
+      
+      this.log(`Setting force charge target to: ${target}%`);
+      await this.setCapabilityValue('force_charge_target', target);
+      
+      // Trigger the flow card if registered
+      if (this.forceChargeTargetChangedTrigger) {
+        await this.forceChargeTargetChangedTrigger.trigger(this, { target: target }, { target: target });
+      }
+      
+      return true;
+    } catch (error) {
+      this.error('Error setting force charge target:', error);
+      throw error;
+    }
+  }
+
+  // ============================================
+  // TRIGGER REGISTRATION
+  // ============================================
+
+  /**
+   * Register flow card triggers in your device's onInit method
+   */
+  registerFlowCardTriggers() {
+    // Register device-specific trigger cards
+
+    this.forceChargeModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_charge_mode_changed');
+    this.operationModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('operation_mode_changed');
+    this.userWorkModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('user_work_mode_changed');
+    this.forceChargePowerChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_charge_power_changed');
+    this.forceDischargePowerChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_discharge_power_changed');
+    this.forceChargeTargetChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_charge_target_changed');
+    
+    this.log('Flow card triggers registered');
+  }
+
+  // ============================================
+  // CAPABILITY CHANGE LISTENERS
+  // ============================================
+
+  /**
+   * Set up capability change listeners to trigger flow cards automatically
+   * Call this in your device's onInit method
+   */
+  setupCapabilityListeners() {
+    // Listen for backup mode changes
+    this.registerCapabilityListener('backup_mode', this.onCapabilityBackupMode.bind(this));
+    // Listen for force charge mode changes
+    this.registerCapabilityListener('force_charge_mode', this.onCapabilityChargeMode.bind(this));
+    // Listen for user work mode changes
+    this.registerCapabilityListener('user_work_mode', this.onCapabilityUserWorkMode.bind(this));
+    // Listen for force charge power changes
+    this.registerCapabilityListener('force_charge_power', this.onCapabilityForceChargePower.bind(this));
+    // Listen for force discharge power changes
+    this.registerCapabilityListener('force_discharge_power', this.onCapabilityForceDisChargePower.bind(this));
+    // Listen for force charge target changes
+    this.registerCapabilityListener('force_charge_target', this.onCapabilityForceChargeTarget.bind(this));
+    // Listen for operation mode changes (read-only, triggered from data updates)
+    this.registerCapabilityListener('operation_mode', async (value, opts) => {
+      this.log(`Operation mode changed to: ${value}`);
+      
+      if (this.operationModeChangedTrigger && !opts.fromCloudSync) {
+        await this.operationModeChangedTrigger.trigger(this, 
+          { mode: value }, 
+          { mode: value }
+        );
+      }
+    });
+    this.log('Capability listeners registered');
+  }
 }
 
 module.exports = VenusBatteryDevice;

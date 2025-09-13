@@ -1,5 +1,4 @@
 Marstek Homebatteries - Complete Energy Storage Management
-
 Transform your home into a smart energy powerhouse! This Homey app brings full control of your energy storage system directly to your fingertips, enabling intelligent automation and optimal energy management like never before.
 
 Unlock Your Energy Independence

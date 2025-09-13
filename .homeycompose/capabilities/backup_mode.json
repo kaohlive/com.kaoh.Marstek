@@ -1,0 +1,46 @@
+{
+  "type": "boolean",
+  "title": {
+    "en": "Battery Backup Mode",
+    "nl": "Batterij Backup Modus"
+  },
+  "desc": {
+    "en": "Enable or disable battery backup mode for the device",
+    "nl": "Batterij backup modus in- of uitschakelen voor het apparaat"
+  },
+  "chartType": "stepLine",
+  "decimals": 0,
+  "getable": true,
+  "setable": true,
+  "uiComponent": "toggle",
+  "uiQuickAction": false,
+  "icon": "/assets/backup-mode.svg",
+  "insights": true,
+  "insightsTitleTrue": {
+    "en": "Battery backup enabled",
+    "nl": "Batterij backup ingeschakeld"
+  },
+  "insightsTitleFalse": {
+    "en": "Battery backup disabled",
+    "nl": "Batterij backup uitgeschakeld"
+  },
+  "options": {
+    "showTitle": true,
+    "showValue": true,
+    "invert": false,
+    "label": {
+      "true": {
+        "en": "Backup Active",
+        "nl": "Backup Actief"
+      },
+      "false": {
+        "en": "Normal Mode",
+        "nl": "Normale Modus"
+      }
+    }
+  },
+  "preventInsights": false,
+  "units": {
+    "en": ""
+  }
+}

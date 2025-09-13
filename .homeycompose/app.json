@@ -1,7 +1,7 @@
 {
   "id": "com.kaoh.marstek",
   "version": "1.0.0",
-  "brandColor": "#82BC41",
+  "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "platformVersion": 2,
@@ -9,10 +9,10 @@
     "local"
   ],
   "name": {
-    "en": "Marstek Home Battery"
+    "en": "Marstek Energy Storage"
   },
   "description": {
-    "en": "Control and monitor Marstek home battery systems via Modbus TCP"
+    "en": "Control and monitor Marstek energy storage systems via Modbus TCP"
   },
   "category": ["energy"],
   "permissions": [],

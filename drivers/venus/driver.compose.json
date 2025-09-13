@@ -1,13 +1,19 @@
 {
   "name": {
-    "en": "Venus Battery - EW11"
+    "en": "Venus Battery"
   },
   "energy": {
     "homeBattery": true,
+    "batteries": ["INTERNAL"],
     "meterPowerImportedCapability": "meter_power.imported",
     "meterPowerExportedCapability": "meter_power.exported"
   },
   "class": "battery",
+  "images": {
+    "large": "/drivers/venus/assets/images/large.png",
+    "small": "/drivers/venus/assets/images/small.png",
+    "xlarge": "/drivers/venus/assets/images/xlarge.png"
+  },
   "pair": [
     {
       "id": "list_devices",
@@ -47,7 +53,8 @@
     "force_charge_target",
     "measure_battery",
     "force_discharge_power",
-    "force_charge_power"
+    "force_charge_power",
+    "backup_mode"
   ],
   "capabilitiesOptions": {
     "measure_voltage": {

@@ -40,6 +40,5 @@
   ],
   "getable": true,
   "setable": true,
-  "uiComponent": "picker",
-  "icon": "/assets/charge-mode.svg"
+  "uiComponent": "picker"
 }
