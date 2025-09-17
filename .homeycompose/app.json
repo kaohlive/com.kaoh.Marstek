@@ -1,6 +1,6 @@
 {
   "id": "com.kaoh.marstek",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
@@ -14,7 +14,9 @@
   "description": {
     "en": "Control and monitor Marstek energy storage systems via Modbus TCP"
   },
-  "category": ["energy"],
+  "category": [
+    "energy"
+  ],
   "permissions": [],
   "images": {
     "small": "/assets/images/small.png",

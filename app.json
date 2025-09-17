@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
@@ -1685,6 +1685,15 @@
                 "en": "Firmware"
               },
               "value": "xxx"
+            },
+            {
+              "id": "device_version",
+              "type": "label",
+              "label": {
+                "en": "Device Version",
+                "nl": "Apparaat Versie"
+              },
+              "value": "unknown"
             }
           ]
         }
