@@ -29,6 +29,7 @@ class VenusBatteryDevice extends Homey.Device {
     this.registerFlowCardTriggers();
     //Setup some global vars that we get from the device on init
     this.batteryCapacity=0;
+    this.deviceVersion = 'unknown'; // Will be set to 'v1v2' or 'v3' based on firmware
   }
 
   async onSettings({ oldSettings, newSettings, changedKeys }) {
@@ -184,9 +185,35 @@ async writeDeviceName(name, config) {
       const reg_device_name = await this.modbus.readHoldingRegisters(slaveId, 31000, 10);
       // Simple conversion
       const deviceName = ModbusClient.bufferToString(reg_device_name);
+
+      // Read firmware version from register 31101 (Firmware version)
+      const reg_firmware = await this.modbus.readHoldingRegisters(slaveId, 31101, 1);
+      const firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_firmware));
+      const firmwareVersion = firmwareRaw.toString(); // Firmware register already contains the correct value
+
+      // Determine device version based on device name - more reliable than firmware version
+      // V3 devices typically have names like "AC01", while V1/V2 have "limited", "BI_2.5_2.5", etc.
+      const deviceNameLower = deviceName.toLowerCase().trim();
+
+      // V3 device detection patterns
+      if (deviceNameLower.includes('ac01') || deviceNameLower.startsWith('ac')) {
+        this.deviceVersion = 'v2';
+      } else if (deviceNameLower.includes('limited') || deviceNameLower.includes('bi_')) {
+        this.deviceVersion = 'v1';
+      } else {
+        // Fallback to firmware version detection if device name is unclear
+        this.deviceVersion = firmwareRaw >= 300 ? 'v3' : 'v1v2';
+        this.log(`Using firmware fallback for version detection - unknown device name: ${deviceName}`);
+      }
+
+      this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}", firmware: ${firmwareVersion})`);
+
       //Now store the collected info in read only settings for easy access to the user
-      this.setSettings({'storage_capacity':this.batteryCapacity+' kwh',
-        'device_name':deviceName
+      this.setSettings({
+        'storage_capacity': this.batteryCapacity + ' kwh',
+        'device_name': deviceName,
+        'firmware': firmwareVersion,
+        'device_version': this.deviceVersion
       });
       //We only manage these from Homey since the Marstek app does not allow to control these
       //Force charge power
@@ -240,9 +267,16 @@ async writeDeviceName(name, config) {
       const reg_voltage_ac =await this.modbus.readHoldingRegisters(slaveId, 32200, 1);
       const voltage_ac = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage_ac)) * 0.1;
       this.setCapabilityValue('measure_voltage', voltage_ac).catch(this.error);
-      // AC Output current (0.1A resolution, signed)
+      // AC Output current (0.1A resolution, signed) - V3 devices use different scaling
       const reg_current_ac = await this.modbus.readHoldingRegisters(slaveId, 32201, 1);
-      const current_ac = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac)) * 0.01;
+      const current_ac_raw = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac));
+      // Different scaling for different device versions
+      let current_ac;
+      if (this.deviceVersion === 'v3') {
+        current_ac = current_ac_raw * 0.001; // V3 devices use 0.001 scaling
+      } else {
+        current_ac = current_ac_raw * 0.01; // V1 and V2 devices use 0.01 scaling
+      }
       this.setCapabilityValue('measure_current', current_ac).catch(this.error);
       //AC power output, this is the main interaction between our house and the ESS
       const reg_power_ac = await this.modbus.readHoldingRegisters(slaveId, 32202, 2);
@@ -277,9 +311,16 @@ async writeDeviceName(name, config) {
       const voltage = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage)) * 0.01;
       this.setCapabilityValue('measure_voltage.battery', voltage).catch(this.error);
 
-      // Battery current (0.1A resolution, signed)
+      // Battery current (0.1A resolution, signed) - V3 devices use different scaling
       const reg_current = await this.modbus.readHoldingRegisters(slaveId, 32101, 1);
-      const current = ModbusClient.bufferToInt16(Buffer.concat(reg_current)) * 0.01;
+      const current_raw = ModbusClient.bufferToInt16(Buffer.concat(reg_current));
+      // Different scaling for different device versions
+      let current;
+      if (this.deviceVersion === 'v3') {
+        current = current_raw * 0.001; // V3 devices use 0.001 scaling
+      } else {
+        current = current_raw * 0.01; // V1 and V2 devices use 0.01 scaling
+      }
       this.setCapabilityValue('measure_current.battery', current).catch(this.error);
 
     } catch (error) {
@@ -338,7 +379,12 @@ async writeDeviceName(name, config) {
       const force_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode));
       const forceModeStr = this.driver.FORCE_MODES[force_mode];
       console.log('current charge mode forced :'+force_mode);
-      this.setCapabilityValue('force_charge_mode', forceModeStr).catch(this.error);
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      const currentForceMode = this.getCapabilityValue('force_charge_mode');
+      if (currentForceMode !== forceModeStr) {
+        this.setCapabilityValue('force_charge_mode', forceModeStr).catch(this.error);
+      }
       //Work mode
       const reg_work_mode = await this.modbus.readHoldingRegisters(slaveId, 43000, 1);
       let work_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
@@ -349,19 +395,35 @@ async writeDeviceName(name, config) {
         work_mode=3;
       console.log('workmode: '+work_mode);
       const workModeStr = this.driver.WORK_MODES[work_mode];
-      this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      const currentWorkMode = this.getCapabilityValue('user_work_mode');
+      if (currentWorkMode !== workModeStr) {
+        this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+      }
       //Process my states for events
       this.processStatusFlags(modeStr, 0);
       //Get current force SOC target
       const reg_force_soc = await this.modbus.readHoldingRegisters(slaveId, 42011, 1);
       const force_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_force_soc));
       console.log('Force charge target: '+force_soc+'%')
-      this.setCapabilityValue('force_charge_target', force_soc).catch(this.error);
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      const currentForceTarget = this.getCapabilityValue('force_charge_target');
+      if (currentForceTarget !== force_soc) {
+        this.setCapabilityValue('force_charge_target', force_soc).catch(this.error);
+      }
       //Get current backup mode
       const reg_backup_mode = await this.modbus.readHoldingRegisters(slaveId, 41200, 1);
       const backup_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_backup_mode));
-      console.log('Backup Mode: '+(backup_mode==0))
-      this.setCapabilityValue('backup_mode', (backup_mode==0)).catch(this.error);
+      const backupModeValue = (backup_mode==0);
+      console.log('Backup Mode: '+backupModeValue)
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      const currentBackupMode = this.getCapabilityValue('backup_mode');
+      if (currentBackupMode !== backupModeValue) {
+        this.setCapabilityValue('backup_mode', backupModeValue).catch(this.error);
+      }
 
     } catch (error) {
       this.log('Error processing system data:', error);

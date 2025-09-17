@@ -218,6 +218,15 @@
         "type": "label",
         "label": { "en": "Firmware" },
         "value": "xxx"
+      },
+      {
+        "id": "device_version",
+        "type": "label",
+        "label": {
+          "en": "Device Version",
+          "nl": "Apparaat Versie"
+        },
+        "value": "unknown"
       }
     ]
   }
