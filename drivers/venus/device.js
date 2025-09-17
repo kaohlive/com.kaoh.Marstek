@@ -371,12 +371,18 @@ async writeDeviceName(name, config) {
       const modeStr = this.driver.INVERTER_MODES[inverter_state];
       // Trigger operation mode change event
       const previousMode = this.getCapabilityValue('operation_mode');
-      if (previousMode && previousMode !== modeStr) {
-        this.homey.flow.getDeviceTriggerCard('operation_mode_changed')
-          .trigger(this, { mode: modeStr }, { mode: modeStr })
-          .catch(this.error);
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      if (previousMode !== modeStr) {
+        this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
+
+        // Trigger operation mode change event only after value is set and if there was a previous value
+        if (previousMode) {
+          this.homey.flow.getDeviceTriggerCard('operation_mode_changed')
+            .trigger(this, { mode: modeStr }, { mode: modeStr })
+            .catch(this.error);
+        }
       }
-      this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
       //Force mode
       const reg_force_mode = await this.modbus.readHoldingRegisters(slaveId, 42010, 1);
       const force_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode));
@@ -596,7 +602,8 @@ async writeDeviceName(name, config) {
   }
 
   processChargingStatus(operationMode) {
-    // Determine charging status based on operation mode only
+    // Determine charging status based on operation mode
+    // Standard battery_charging_state values: charging, discharging, idle
     let chargingStatus = 'idle';
 
     if (operationMode && operationMode.toLowerCase().includes('charge')) {
@@ -689,7 +696,7 @@ async writeDeviceName(name, config) {
     });  
   }
 
-  async onCapabilityBackupMode(value) {
+  async onCapabilityBackupMode(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -711,7 +718,7 @@ async writeDeviceName(name, config) {
   }
 
   // Write operations for supported registers
-  async onCapabilityForceChargePower(value) {
+  async onCapabilityForceChargePower(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -733,7 +740,7 @@ async writeDeviceName(name, config) {
     }
   }
 
-  async onCapabilityForceDisChargePower(value) {
+  async onCapabilityForceDisChargePower(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -754,7 +761,7 @@ async writeDeviceName(name, config) {
     }
   }
 
-  async onCapabilityChargeMode(value) {
+  async onCapabilityChargeMode(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -762,7 +769,7 @@ async writeDeviceName(name, config) {
       try {
         await this.validateControlRequirement();
       } catch (error) {
-        Promise.reject(error);
+        throw error;
       }
       
       const slaveId = this.settings.slave_id || 1;
@@ -789,7 +796,7 @@ async writeDeviceName(name, config) {
 
   //Sets the User Work Mode by turning the device in on eof the three automated operating modes
   //If the force control mode is selected it will turn on modbus control to allow the charge value to lead the bahavior
-  async onCapabilityUserWorkMode(value) {
+  async onCapabilityUserWorkMode(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -830,7 +837,7 @@ async writeDeviceName(name, config) {
     }
   }
 
-  async onCapabilityForceChargeTarget(value) {
+  async onCapabilityForceChargeTarget(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
@@ -839,7 +846,7 @@ async writeDeviceName(name, config) {
       try {
         await this.validateControlRequirement();
       } catch (error) {
-        Promise.reject(error);
+        throw error;
       }
 
       const slaveId = this.settings.slave_id || 1;
