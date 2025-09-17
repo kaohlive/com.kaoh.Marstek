@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
@@ -152,6 +152,32 @@
           "en": "Battery fault detected",
           "nl": "Batterijfout gedetecteerd"
         },
+        "titleFormatted": {
+          "en": "Battery fault detected: [[message]]",
+          "nl": "Batterijfout gedetecteerd: [[message]]"
+        },
+        "hint": {
+          "en": "Triggered when any battery fault is detected",
+          "nl": "Geactiveerd wanneer een batterijfout wordt gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Fault Message",
+              "nl": "Foutmelding"
+            }
+          },
+          {
+            "name": "alarm_codes",
+            "type": "string",
+            "title": {
+              "en": "Alarm Codes",
+              "nl": "Alarm Codes"
+            }
+          }
+        ],
         "args": [
           {
             "type": "device",
@@ -166,6 +192,160 @@
           "en": "Battery warning detected",
           "nl": "Batterijwaarschuwing gedetecteerd"
         },
+        "titleFormatted": {
+          "en": "Battery warning detected: [[message]]",
+          "nl": "Batterijwaarschuwing gedetecteerd: [[message]]"
+        },
+        "hint": {
+          "en": "Triggered when any battery warning is detected",
+          "nl": "Geactiveerd wanneer een batterijwaarschuwing wordt gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Warning Message",
+              "nl": "Waarschuwingsbericht"
+            }
+          },
+          {
+            "name": "alarm_codes",
+            "type": "string",
+            "title": {
+              "en": "Alarm Codes",
+              "nl": "Alarm Codes"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "grid_fault_detected",
+        "title": {
+          "en": "Grid fault detected",
+          "nl": "Netwerkfout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Grid fault detected: [[message]]",
+          "nl": "Netwerkfout gedetecteerd: [[message]]"
+        },
+        "hint": {
+          "en": "Triggered when grid-related faults are detected",
+          "nl": "Geactiveerd wanneer netwerkgerelateerde fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Grid Fault Details",
+              "nl": "Netwerkfout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "battery_system_fault_detected",
+        "title": {
+          "en": "Battery system fault detected",
+          "nl": "Batterijsysteem fout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Battery system fault detected: [[message]]",
+          "nl": "Batterijsysteem fout gedetecteerd: [[message]]"
+        },
+        "hint": {
+          "en": "Triggered when battery system faults are detected",
+          "nl": "Geactiveerd wanneer batterijsysteem fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Battery System Fault Details",
+              "nl": "Batterijsysteem Fout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "hardware_fault_detected",
+        "title": {
+          "en": "Hardware fault detected",
+          "nl": "Hardware fout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Hardware fault detected: [[message]]",
+          "nl": "Hardware fout gedetecteerd: [[message]]"
+        },
+        "hint": {
+          "en": "Triggered when hardware faults are detected",
+          "nl": "Geactiveerd wanneer hardware fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Hardware Fault Details",
+              "nl": "Hardware Fout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "system_fault_detected",
+        "title": {
+          "en": "System fault detected",
+          "nl": "Systeemfout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "System fault detected: [[message]]",
+          "nl": "Systeemfout gedetecteerd: [[message]]"
+        },
+        "hint": {
+          "en": "Triggered when system faults are detected",
+          "nl": "Geactiveerd wanneer systeemfouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "System Fault Details",
+              "nl": "Systeemfout Details"
+            }
+          }
+        ],
         "args": [
           {
             "type": "device",
@@ -1790,7 +1970,8 @@
       ],
       "getable": true,
       "setable": true,
-      "uiComponent": "picker"
+      "uiComponent": "picker",
+      "insights": true
     },
     "force_charge_power": {
       "type": "number",
@@ -1915,7 +2096,8 @@
       "getable": true,
       "setable": false,
       "uiComponent": "sensor",
-      "icon": "/assets/operation-mode.svg"
+      "icon": "/assets/operation-mode.svg",
+      "insights": true
     },
     "user_work_mode": {
       "type": "enum",
@@ -1959,7 +2141,8 @@
       ],
       "getable": true,
       "setable": true,
-      "uiComponent": "picker"
+      "uiComponent": "picker",
+      "insights": true
     }
   }
 }

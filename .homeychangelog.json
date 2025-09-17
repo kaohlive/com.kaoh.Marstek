@@ -4,5 +4,8 @@
   },
   "1.0.1": {
     "en": "V3 support finetuning and workflow triggering bug fix"
+  },
+  "1.0.2": {
+    "en": "Added fault states and workflows and insights"
   }
 }
