@@ -55,5 +55,6 @@
   "getable": true,
   "setable": false,
   "uiComponent": "sensor",
-  "icon": "/assets/operation-mode.svg"
+  "icon": "/assets/operation-mode.svg",
+  "insights": true
 }

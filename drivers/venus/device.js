@@ -343,6 +343,9 @@ async writeDeviceName(name, config) {
       const reg_temp_mos2 =await this.modbus.readHoldingRegisters(slaveId, 35002, 1);
       const temp_mos2 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos2)) * 0.1;
       this.setCapabilityValue('measure_temperature.mos2', temp_mos2).catch(this.error);
+
+      // Process alarm and fault codes
+      await this.processAlarmCodes(slaveId);
     } catch (error) {
       this.log('Error processing battery state:', error);
     }
@@ -401,8 +404,8 @@ async writeDeviceName(name, config) {
       if (currentWorkMode !== workModeStr) {
         this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
       }
-      //Process my states for events
-      this.processStatusFlags(modeStr, 0);
+      //Process charging status from operation mode
+      this.processChargingStatus(modeStr);
       //Get current force SOC target
       const reg_force_soc = await this.modbus.readHoldingRegisters(slaveId, 42011, 1);
       const force_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_force_soc));
@@ -430,56 +433,198 @@ async writeDeviceName(name, config) {
     }
   }
 
-  processStatusFlags(mode, flags) {
-    const STATUS_MAP = {
-      charge: 'charging',
-      discharge: 'discharging'
-    };
+  async processAlarmCodes(slaveId) {
+    try {
+      const alarms = [];
+      const systemAlarms = [];
+      const gridAlarms = [];
+      const batteryAlarms = [];
+      const hardwareAlarms = [];
+      const systemFaultAlarms = [];
+      let hasAlarm = false;
 
-    const charging = !!(flags & 0x01);
-    const discharging = !!(flags & 0x02);
-    const fault = !!(flags & 0x04);
-    const warning = !!(flags & 0x08);
+      // Default register values (assume no alarms if register doesn't exist)
+      let alarm_code = 0;
+      let grid_fault = 0;
+      let battery_fault = 0;
+      let hardware_fault = 0;
 
-    const currentStatus = STATUS_MAP[mode] ?? 'idle';
+      // Try to read alarm code (36000) - System alarms
+      try {
+        const reg_alarm_code = await this.modbus.readHoldingRegisters(slaveId, 36000, 1);
+        alarm_code = ModbusClient.bufferToUint16(Buffer.concat(reg_alarm_code));
+
+        if (alarm_code > 0) {
+          hasAlarm = true;
+          if (alarm_code & 0x01) { alarms.push('PLL Abnormal Restart'); systemAlarms.push('PLL Abnormal Restart'); }
+          if (alarm_code & 0x02) { alarms.push('Over Temperature Limit'); systemAlarms.push('Over Temperature Limit'); }
+          if (alarm_code & 0x04) { alarms.push('Low Temperature Limit'); systemAlarms.push('Low Temperature Limit'); }
+          if (alarm_code & 0x08) { alarms.push('Fan Abnormal Warning'); systemAlarms.push('Fan Abnormal Warning'); }
+          if (alarm_code & 0x10) { alarms.push('Low Battery SOC Warning'); systemAlarms.push('Low Battery SOC Warning'); }
+          if (alarm_code & 0x20) { alarms.push('Output Overcurrent Warning'); systemAlarms.push('Output Overcurrent Warning'); }
+          if (alarm_code & 0x40) { alarms.push('Abnormal Line Sequence Detection'); systemAlarms.push('Abnormal Line Sequence Detection'); }
+        }
+      } catch (error) {
+        this.log(`Alarm register 36000 not available: ${error.message}`);
+      }
+
+      // Try to read grid fault word (36100) - Grid faults
+      try {
+        const reg_grid_fault = await this.modbus.readHoldingRegisters(slaveId, 36100, 1);
+        grid_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_grid_fault));
+
+        if (grid_fault > 0) {
+          hasAlarm = true;
+          if (grid_fault & 0x01) { alarms.push('Grid Overvoltage'); gridAlarms.push('Grid Overvoltage'); }
+          if (grid_fault & 0x02) { alarms.push('Grid Undervoltage'); gridAlarms.push('Grid Undervoltage'); }
+          if (grid_fault & 0x04) { alarms.push('Grid Overfrequency'); gridAlarms.push('Grid Overfrequency'); }
+          if (grid_fault & 0x08) { alarms.push('Grid Underfrequency'); gridAlarms.push('Grid Underfrequency'); }
+          if (grid_fault & 0x10) { alarms.push('Grid Peak Voltage Abnormal'); gridAlarms.push('Grid Peak Voltage Abnormal'); }
+          if (grid_fault & 0x20) { alarms.push('Current Dcover'); gridAlarms.push('Current Dcover'); }
+          if (grid_fault & 0x40) { alarms.push('Voltage Dcover'); gridAlarms.push('Voltage Dcover'); }
+        }
+      } catch (error) {
+        this.log(`Grid fault register 36100 not available: ${error.message}`);
+      }
+
+      // Try to read battery fault word (36101) - Battery faults
+      try {
+        const reg_battery_fault = await this.modbus.readHoldingRegisters(slaveId, 36101, 1);
+        battery_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_battery_fault));
+
+        if (battery_fault > 0) {
+          hasAlarm = true;
+          if (battery_fault & 0x01) { alarms.push('Battery Overvoltage'); batteryAlarms.push('Battery Overvoltage'); }
+          if (battery_fault & 0x02) { alarms.push('Battery Undervoltage'); batteryAlarms.push('Battery Undervoltage'); }
+          if (battery_fault & 0x04) { alarms.push('Battery Overcurrent'); batteryAlarms.push('Battery Overcurrent'); }
+          if (battery_fault & 0x08) { alarms.push('Battery Low SOC'); batteryAlarms.push('Battery Low SOC'); }
+          if (battery_fault & 0x10) { alarms.push('Battery Communication Failure'); batteryAlarms.push('Battery Communication Failure'); }
+          if (battery_fault & 0x20) { alarms.push('BMS Protect'); batteryAlarms.push('BMS Protect'); }
+        }
+      } catch (error) {
+        this.log(`Battery fault register 36101 not available: ${error.message}`);
+      }
+
+      // Try to read hardware fault word (36103) - Hardware faults
+      try {
+        const reg_hardware_fault = await this.modbus.readHoldingRegisters(slaveId, 36103, 1);
+        hardware_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_hardware_fault));
+
+        if (hardware_fault > 0) {
+          hasAlarm = true;
+          if (hardware_fault & 0x001) { alarms.push('Hardware Bus Overvoltage'); hardwareAlarms.push('Hardware Bus Overvoltage'); }
+          if (hardware_fault & 0x002) { alarms.push('Hardware Output Overcurrent'); hardwareAlarms.push('Hardware Output Overcurrent'); }
+          if (hardware_fault & 0x004) { alarms.push('Hardware Trans Overcurrent'); hardwareAlarms.push('Hardware Trans Overcurrent'); }
+          if (hardware_fault & 0x008) { alarms.push('Hardware Battery Overcurrent'); hardwareAlarms.push('Hardware Battery Overcurrent'); }
+          if (hardware_fault & 0x010) { alarms.push('Hardware Protection'); hardwareAlarms.push('Hardware Protection'); }
+          if (hardware_fault & 0x020) { alarms.push('Output Overcurrent'); hardwareAlarms.push('Output Overcurrent'); }
+          if (hardware_fault & 0x040) { alarms.push('High Voltage Bus Overvoltage'); hardwareAlarms.push('High Voltage Bus Overvoltage'); }
+          if (hardware_fault & 0x080) { alarms.push('High Voltage Bus Undervoltage'); hardwareAlarms.push('High Voltage Bus Undervoltage'); }
+          if (hardware_fault & 0x100) { alarms.push('Overpower Protection'); hardwareAlarms.push('Overpower Protection'); }
+          if (hardware_fault & 0x200) { alarms.push('FSM Abnormal'); hardwareAlarms.push('FSM Abnormal'); }
+          if (hardware_fault & 0x400) { alarms.push('Overtemperature Protection'); hardwareAlarms.push('Overtemperature Protection'); }
+          if (hardware_fault & 0x800) { alarms.push('Inverter Soft Start Timeout'); hardwareAlarms.push('Inverter Soft Start Timeout'); }
+        }
+      } catch (error) {
+        this.log(`Hardware fault register 36103 not available: ${error.message}`);
+      }
+
+      // Register 36104 not available on this device - skipping system fault detection
+
+      // Update alarm capability and set warning if needed
+      const currentAlarm = this.getCapabilityValue('alarm_generic');
+      if (currentAlarm !== hasAlarm) {
+        this.setCapabilityValue('alarm_generic', hasAlarm).catch(this.error);
+      }
+
+      // Set warning with specific alarm details and trigger workflow cards
+      if (hasAlarm && alarms.length > 0) {
+        const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
+        const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault},Hardware:${hardware_fault}`;
+
+        this.setWarning(alarmMessage);
+        this.log(`Alarms detected: ${alarmMessage}`);
+
+        // Trigger general battery fault detected event with tokens
+        this.homey.flow.getDeviceTriggerCard('battery_fault_detected')
+          .trigger(this,
+            { message: alarmMessage, alarm_codes: alarmCodes },
+            {}
+          )
+          .catch(this.error);
+
+        // Trigger specific alarm type events with detailed messages for available registers
+        if (gridAlarms.length > 0) {
+          const gridMessage = gridAlarms.join(', ');
+          this.homey.flow.getDeviceTriggerCard('grid_fault_detected')
+            .trigger(this, { message: gridMessage }, {})
+            .catch(this.error);
+        }
+
+        if (batteryAlarms.length > 0) {
+          const batteryMessage = batteryAlarms.join(', ');
+          this.homey.flow.getDeviceTriggerCard('battery_system_fault_detected')
+            .trigger(this, { message: batteryMessage }, {})
+            .catch(this.error);
+        }
+
+        if (hardwareAlarms.length > 0) {
+          const hardwareMessage = hardwareAlarms.join(', ');
+          this.homey.flow.getDeviceTriggerCard('hardware_fault_detected')
+            .trigger(this, { message: hardwareMessage }, {})
+            .catch(this.error);
+        }
+
+        // Use generic battery warning for system alarms (since specific system fault register isn't available)
+        if (systemAlarms.length > 0) {
+          const warningMessage = systemAlarms.join(', ');
+          this.homey.flow.getDeviceTriggerCard('battery_warning_detected')
+            .trigger(this,
+              { message: warningMessage, alarm_codes: alarmCodes },
+              {}
+            )
+            .catch(this.error);
+        }
+      } else if (!hasAlarm) {
+        // Clear warning when no alarms
+        this.unsetWarning();
+      }
+
+    } catch (error) {
+      this.log('Error processing alarm codes:', error);
+    }
+  }
+
+  processChargingStatus(operationMode) {
+    // Determine charging status based on operation mode only
+    let chargingStatus = 'idle';
+
+    if (operationMode && operationMode.toLowerCase().includes('charge')) {
+      chargingStatus = 'charging';
+    } else if (operationMode && operationMode.toLowerCase().includes('discharge')) {
+      chargingStatus = 'discharging';
+    }
+
+    // Only set capability if value changed to prevent unnecessary triggers
     const previousStatus = this.getCapabilityValue('battery_charging_state');
+    if (previousStatus !== chargingStatus) {
+      this.setCapabilityValue('battery_charging_state', chargingStatus).catch(this.error);
 
-    this.setCapabilityValue('battery_charging_state', currentStatus).catch(this.error);
-    this.setCapabilityValue('alarm_generic', fault || warning).catch(this.error);
-    
-    // Trigger charging status change events
-    if (previousStatus && previousStatus !== currentStatus) {
+      // Trigger charging status change events
       this.homey.flow.getDeviceTriggerCard('charging_status_changed')
-        .trigger(this, { status: currentStatus }, { status: currentStatus })
+        .trigger(this, { status: chargingStatus }, { status: chargingStatus })
         .catch(this.error);
-        
-      if (currentStatus === 'charging') {
+
+      if (chargingStatus === 'charging') {
         this.homey.flow.getDeviceTriggerCard('battery_started_charging')
           .trigger(this, {}, {})
           .catch(this.error);
-      } else if (currentStatus === 'discharging') {
+      } else if (chargingStatus === 'discharging') {
         this.homey.flow.getDeviceTriggerCard('battery_started_discharging')
           .trigger(this, {}, {})
           .catch(this.error);
       }
     }
-    
-    // Trigger alarm events
-    if (fault && !this.previousValues.fault) {
-      this.homey.flow.getDeviceTriggerCard('battery_fault_detected')
-        .trigger(this, {}, {})
-        .catch(this.error);
-    }
-    
-    if (warning && !this.previousValues.warning) {
-      this.homey.flow.getDeviceTriggerCard('battery_warning_detected')
-        .trigger(this, {}, {})
-        .catch(this.error);
-    }
-    
-    this.previousValues.chargingStatus = currentStatus;
-    this.previousValues.fault = fault;
-    this.previousValues.warning = warning;
   }
 
 
