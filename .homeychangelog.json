@@ -13,5 +13,8 @@
   },
   "1.0.4": {
     "en": "Added some robust code "
+  },
+  "1.0.5": {
+    "en": "Imrpove V3 device detection"
   }
 }
