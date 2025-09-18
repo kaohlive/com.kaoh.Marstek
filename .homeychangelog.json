@@ -16,5 +16,8 @@
   },
   "1.0.5": {
     "en": "Imrpove V3 device detection"
+  },
+  "1.0.6": {
+    "en": "More V3 tweaks due to different registers"
   }
 }
