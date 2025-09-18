@@ -187,19 +187,25 @@ async writeDeviceName(name, config) {
       const deviceName = ModbusClient.bufferToString(reg_device_name);
 
       // Read firmware version from register 31101 (Firmware version)
-      const reg_firmware = await this.modbus.readHoldingRegisters(slaveId, 31101, 1);
-      const firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_firmware));
-      const firmwareVersion = firmwareRaw.toString(); // Firmware register already contains the correct value
-
+      let firmwareVersion='xxx';
+      try{
+        const reg_firmware = await this.modbus.readHoldingRegisters(slaveId, 31101, 1);
+        const firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_firmware));
+        firmwareVersion = firmwareRaw.toString(); // Firmware register already contains the correct value
+      } catch (error) {
+        this.log('Device firmware retrieval error:', error);
+      }
       // Determine device version based on device name - more reliable than firmware version
       // V3 devices typically have names like "AC01", while V1/V2 have "limited", "BI_2.5_2.5", etc.
       const deviceNameLower = deviceName.toLowerCase().trim();
 
       // V3 device detection patterns
-      if (deviceNameLower.includes('ac01') || deviceNameLower.startsWith('ac')) {
+      if (deviceNameLower.startsWith('ac')) {
         this.deviceVersion = 'v2';
       } else if (deviceNameLower.includes('limited') || deviceNameLower.includes('bi_')) {
         this.deviceVersion = 'v1';
+      } else if (deviceNameLower.startsWith('vn')) {
+        this.deviceVersion = 'v3';
       } else {
         // Fallback to firmware version detection if device name is unclear
         this.deviceVersion = firmwareRaw >= 300 ? 'v3' : 'v1v2';
@@ -344,8 +350,10 @@ async writeDeviceName(name, config) {
       const temp_mos2 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos2)) * 0.1;
       this.setCapabilityValue('measure_temperature.mos2', temp_mos2).catch(this.error);
 
-      // Process alarm and fault codes
-      await this.processAlarmCodes(slaveId);
+      // Process alarm and fault codes, but they dont seem to work for v3
+      if (this.deviceVersion !== 'v3') {
+        await this.processAlarmCodes(slaveId);
+      }
     } catch (error) {
       this.log('Error processing battery state:', error);
     }
