@@ -614,10 +614,10 @@ async writeDeviceName(name, config) {
     // Standard battery_charging_state values: charging, discharging, idle
     let chargingStatus = 'idle';
 
-    if (operationMode && operationMode.toLowerCase().includes('charge')) {
-      chargingStatus = 'charging';
-    } else if (operationMode && operationMode.toLowerCase().includes('discharge')) {
+    if (operationMode && operationMode.toLowerCase().includes('discharge')) {
       chargingStatus = 'discharging';
+    } else if (operationMode && operationMode.toLowerCase().includes('charge')) {
+      chargingStatus = 'charging';
     }
 
     // Only set capability if value changed to prevent unnecessary triggers
