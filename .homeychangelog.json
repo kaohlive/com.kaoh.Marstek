@@ -19,5 +19,8 @@
   },
   "1.0.6": {
     "en": "More V3 tweaks due to different registers"
+  },
+  "1.0.7": {
+    "en": "Small mapping bug in charge state"
   }
 }
