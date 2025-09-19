@@ -287,7 +287,8 @@ async writeDeviceName(name, config) {
       //AC power output, this is the main interaction between our house and the ESS
       const reg_power_ac = await this.modbus.readHoldingRegisters(slaveId, 32202, 2);
       const power_ac = ModbusClient.bufferToInt32(Buffer.concat(reg_power_ac));
-      this.setCapabilityValue('measure_power', power_ac).catch(this.error);
+      //For homey we need to invert the power measure
+      this.setCapabilityValue('measure_power', (power_ac*-1)).catch(this.error);
       //But we also set the discharge and charge versions for easy of use
       if (power_ac < 0) {
         this.setCapabilityValue('measure_power.imported', Math.abs(power_ac)).catch(this.error);
