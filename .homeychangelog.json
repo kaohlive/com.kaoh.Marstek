@@ -22,5 +22,8 @@
   },
   "1.0.7": {
     "en": "Small mapping bug in charge state"
+  },
+  "1.0.8": {
+    "en": "Power negative inverted to match Homey standard"
   }
 }
