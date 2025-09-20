@@ -188,9 +188,10 @@ async writeDeviceName(name, config) {
 
       // Read firmware version from register 31101 (Firmware version)
       let firmwareVersion='xxx';
+      let firmwareRaw=999;
       try{
         const reg_firmware = await this.modbus.readHoldingRegisters(slaveId, 31101, 1);
-        const firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_firmware));
+        firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_firmware));
         firmwareVersion = firmwareRaw.toString(); // Firmware register already contains the correct value
       } catch (error) {
         this.log('Device firmware retrieval error:', error);
