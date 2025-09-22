@@ -923,15 +923,6 @@ async writeDeviceName(name, config) {
     }
   }
 
-  async actionSetTargetPower(args) {
-    try {
-      await this.onCapabilityTargetPower(args.power);
-      return true;
-    } catch (error) {
-      this.log('Flow action set target power failed:', error);
-      throw error;
-    }
-  }
 
   async onDeleted() {
     this.log('VenusBatteryDevice deleted');

@@ -126,11 +126,6 @@ registerFlowCardActions() {
       return await args.device.actionSetChargeMode(args);
     });
 
-  // Set target power action
-  this.homey.flow.getActionCard('set_target_power')
-    .registerRunListener(async (args) => {
-      return await args.device.actionSetTargetPower(args);
-    });
 
   // NEW ACTIONS FROM CUSTOM CAPABILITIES
   // Set backup mode action
