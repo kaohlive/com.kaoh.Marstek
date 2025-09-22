@@ -28,5 +28,8 @@
   },
   "1.0.9": {
     "en": "handle missing firmware register for V3 better"
+  },
+  "1.0.10": {
+    "en": "Improvd workflow action handler"
   }
 }
