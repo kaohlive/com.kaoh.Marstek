@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
@@ -1334,39 +1334,6 @@
                 }
               }
             ]
-          }
-        ]
-      },
-      {
-        "id": "set_target_power",
-        "title": {
-          "en": "Set target power",
-          "nl": "Doelvermogen instellen"
-        },
-        "titleFormatted": {
-          "en": "Set target power to [[power]] W",
-          "nl": "Doelvermogen instellen op [[power]] W"
-        },
-        "hint": {
-          "en": "Set battery target power",
-          "nl": "Batterij doelvermogen instellen"
-        },
-        "args": [
-          {
-            "type": "device",
-            "name": "device",
-            "filter": "driver_id=venus"
-          },
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": -2500,
-            "max": 2500,
-            "step": 5
           }
         ]
       },

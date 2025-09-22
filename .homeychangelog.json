@@ -31,5 +31,8 @@
   },
   "1.0.10": {
     "en": "Improvd workflow action handler"
+  },
+  "1.0.11": {
+    "en": "Removed deprecated set charge power workflow actions"
   }
 }
