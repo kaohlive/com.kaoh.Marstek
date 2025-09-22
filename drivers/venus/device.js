@@ -1068,15 +1068,10 @@ async writeDeviceName(name, config) {
   async actionSetBackupMode(args) {
     try {
       const targetMode = args.mode === 'true';
-      
+
       this.log(`Setting backup mode to: ${targetMode}`);
-      await this.setCapabilityValue('backup_mode', targetMode);
-      
-      // Trigger the flow card if registered
-      if (this.backupModeChangedTrigger) {
-        await this.backupModeChangedTrigger.trigger(this, { mode: targetMode }, { mode: args.mode });
-      }
-      
+      await this.onCapabilityBackupMode(targetMode);
+
       return true;
     } catch (error) {
       this.error('Error setting backup mode:', error);
@@ -1093,13 +1088,8 @@ async writeDeviceName(name, config) {
   async actionSetForceChargeMode(args) {
     try {
       this.log(`Setting force charge mode to: ${args.mode}`);
-      await this.setCapabilityValue('force_charge_mode', args.mode);
-      
-      // Trigger the flow card if registered
-      if (this.forceChargeModeChangedTrigger) {
-        await this.forceChargeModeChangedTrigger.trigger(this, { mode: args.mode }, { mode: args.mode });
-      }
-      
+      await this.onCapabilityChargeMode(args.mode);
+
       return true;
     } catch (error) {
       this.error('Error setting force charge mode:', error);
@@ -1116,13 +1106,8 @@ async writeDeviceName(name, config) {
   async actionSetUserWorkMode(args) {
     try {
       this.log(`Setting user work mode to: ${args.mode}`);
-      await this.setCapabilityValue('user_work_mode', args.mode);
-      
-      // Trigger the flow card if registered
-      if (this.userWorkModeChangedTrigger) {
-        await this.userWorkModeChangedTrigger.trigger(this, { mode: args.mode }, { mode: args.mode });
-      }
-      
+      await this.onCapabilityUserWorkMode(args.mode);
+
       return true;
     } catch (error) {
       this.error('Error setting user work mode:', error);
@@ -1139,20 +1124,15 @@ async writeDeviceName(name, config) {
   async actionSetForceChargePower(args) {
     try {
       const power = Number(args.power);
-      
+
       // Validate range
       if (power < 0 || power > 2500) {
         throw new Error(`Invalid power value: ${power}W. Must be between 0-2500W`);
       }
-      
+
       this.log(`Setting force charge power to: ${power}W`);
-      await this.setCapabilityValue('force_charge_power', power);
-      
-      // Trigger the flow card if registered
-      if (this.forceChargePowerChangedTrigger) {
-        await this.forceChargePowerChangedTrigger.trigger(this, { power: power }, { power: power });
-      }
-      
+      await this.onCapabilityForceChargePower(power);
+
       return true;
     } catch (error) {
       this.error('Error setting force charge power:', error);
@@ -1169,20 +1149,15 @@ async writeDeviceName(name, config) {
   async actionSetForceDischargePower(args) {
     try {
       const power = Number(args.power);
-      
+
       // Validate range
       if (power < 0 || power > 2500) {
         throw new Error(`Invalid power value: ${power}W. Must be between 0-2500W`);
       }
-      
+
       this.log(`Setting force discharge power to: ${power}W`);
-      await this.setCapabilityValue('force_discharge_power', power);
-      
-      // Trigger the flow card if registered
-      if (this.forceDischargePowerChangedTrigger) {
-        await this.forceDischargePowerChangedTrigger.trigger(this, { power: power }, { power: power });
-      }
-      
+      await this.onCapabilityForceDisChargePower(power);
+
       return true;
     } catch (error) {
       this.error('Error setting force discharge power:', error);
@@ -1199,20 +1174,15 @@ async writeDeviceName(name, config) {
   async actionSetForceChargeTarget(args) {
     try {
       const target = Number(args.target);
-      
+
       // Validate range
       if (target < 11 || target > 100) {
         throw new Error(`Invalid SOC target: ${target}%. Must be between 11-100%`);
       }
-      
+
       this.log(`Setting force charge target to: ${target}%`);
-      await this.setCapabilityValue('force_charge_target', target);
-      
-      // Trigger the flow card if registered
-      if (this.forceChargeTargetChangedTrigger) {
-        await this.forceChargeTargetChangedTrigger.trigger(this, { target: target }, { target: target });
-      }
-      
+      await this.onCapabilityForceChargeTarget(target);
+
       return true;
     } catch (error) {
       this.error('Error setting force charge target:', error);
