@@ -10,19 +10,28 @@ class VenusBatteryDevice extends Homey.Device {
 
     // Get device settings
     this.settings = this.getSettings();
-    
+
     // Initialize Modbus client
     this.modbus = new ModbusClient();
-    
+
+    // Apply connection timeout setting to ModbusClient
+    if (this.settings.connection_timeout) {
+      this.modbus.connectionTimeout = this.settings.connection_timeout;
+    }
+
     // Previous values for event detection
     this.previousValues = {};
-    
+
+    // Error tracking for graceful degradation
+    this.consecutiveErrors = 0;
+    this.maxConsecutiveErrors = this.settings.max_consecutive_errors || 3;
+
     // Setup Modbus event handlers
     this.setupModbusHandlers();
-    
+
     // Start polling
     this.startPolling();
-    
+
     // Register capability listeners for writable registers
     this.setupCapabilityListeners();
     //Register flow trigger cards
@@ -34,9 +43,24 @@ class VenusBatteryDevice extends Homey.Device {
 
   async onSettings({ oldSettings, newSettings, changedKeys }) {
     this.log('Settings changed:', changedKeys);
-    
+
+    // Update settings
+    this.settings = newSettings;
+
+    // Apply connection timeout changes
+    if (changedKeys.includes('connection_timeout')) {
+      this.modbus.connectionTimeout = newSettings.connection_timeout;
+      this.log(`Connection timeout updated to ${newSettings.connection_timeout}ms`);
+    }
+
+    // Apply max consecutive errors changes
+    if (changedKeys.includes('max_consecutive_errors')) {
+      this.maxConsecutiveErrors = newSettings.max_consecutive_errors;
+      this.log(`Max consecutive errors updated to ${newSettings.max_consecutive_errors}`);
+    }
+
+    // Restart polling if connection settings changed
     if (changedKeys.includes('ip') || changedKeys.includes('port') || changedKeys.includes('poll_interval')) {
-      this.settings = newSettings;
       this.restartPolling();
     }
   }
@@ -109,18 +133,18 @@ async writeDeviceName(name, config) {
   setupModbusHandlers() {
     this.modbus.on('connect', () => {
       this.setAvailable();
+      this.consecutiveErrors = 0; // Reset error counter on successful connection
       this.log('Connected to Modbus device');
       this.processDeviceStaticInfo(this.settings.slave_id || 1);
     });
 
     this.modbus.on('error', (error) => {
-      if(!this.modbus.isConnected())
-        this.setUnavailable(`Connection failed: ${error.message}`);
-      this.log('Modbus connection error:', error);
+      this.log('Modbus connection error:', error.message);
+      // Don't immediately mark unavailable - let polling error handling decide
     });
 
     this.modbus.on('close', () => {
-      this.log('Modbus connection closed');
+      this.log('Modbus connection closed - will attempt reconnection');
     });
   }
 
@@ -241,6 +265,12 @@ async writeDeviceName(name, config) {
 
   async pollData() {
     if (!await this.connectModbus()) {
+      this.consecutiveErrors++;
+      this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+        this.setUnavailable(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
+      }
       return;
     }
 
@@ -252,19 +282,30 @@ async writeDeviceName(name, config) {
       await this.processBatteryState(slaveId);
 
       console.log('Get battery health [slave '+slaveId+']')
-      await this.processBatteryState(slaveId);
+      await this.processBatteryHealth(slaveId);
 
       // Read system health data
       console.log('Get system health [slave '+slaveId+']')
-      this.processBatteryHealth(slaveId);
+      await this.processBatteryHealth(slaveId);
 
       // Read system operation status registers
       console.log('Get system data [slave '+slaveId+']')
-      this.processSystemData(slaveId);
+      await this.processSystemData(slaveId);
+
+      // Successful poll - reset error counter and ensure device is marked available
+      this.consecutiveErrors = 0;
+      if (!this.getAvailable()) {
+        this.setAvailable();
+      }
 
     } catch (error) {
-      this.log('Polling error:', error);
-      this.setUnavailable(`Polling failed: ${error.message}`);
+      this.consecutiveErrors++;
+      this.log(`Polling error (${this.consecutiveErrors}/${this.maxConsecutiveErrors}):`, error.message);
+
+      // Only mark unavailable after multiple consecutive failures
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+        this.setUnavailable(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
+      }
     }
   }
 
@@ -781,7 +822,7 @@ async writeDeviceName(name, config) {
       } catch (error) {
         throw error;
       }
-      
+
       const slaveId = this.settings.slave_id || 1;
       const modeValue = Object.keys(this.driver.FORCE_MODES).find(
         key => this.driver.FORCE_MODES[key] === value
@@ -790,14 +831,22 @@ async writeDeviceName(name, config) {
       //We expect the work mode to be on force_control, else this is ignored
       await this.modbus.writeSingleRegister(slaveId, 42010, modeValue);
       this.log('Charge mode set to:', value);
+
+      // Apply configurable delay to allow battery to accept new state
+      const delay = this.settings.force_mode_delay || 1000;
+      if (delay > 0) {
+        this.log(`Waiting ${delay}ms for battery to accept force mode change...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
       //Now trigger the workflow card
       if (this.forceChargeModeChangedTrigger && !opts.fromCloudSync) {
-        await this.forceChargeModeChangedTrigger.trigger(this, 
-          { mode: value }, 
+        await this.forceChargeModeChangedTrigger.trigger(this,
+          { mode: value },
           { mode: value }
         );
       }
-      
+
     } catch (error) {
       this.log('Error setting charge mode:', error);
       throw new Error('Failed to set charge mode');

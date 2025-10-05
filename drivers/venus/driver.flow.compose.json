@@ -685,8 +685,8 @@
         "nl": "Batterij backup modus is"
       },
       "titleFormatted": {
-        "en": "Battery backup mode is [[mode]]",
-        "nl": "Batterij backup modus is [[mode]]"
+        "en": "Battery backup mode !{{is|is not}} [[mode]]",
+        "nl": "Batterij backup modus !{{is|is niet}} [[mode]]"
       },
       "hint": {
         "en": "Check if battery backup mode is enabled or disabled",
@@ -726,8 +726,8 @@
         "nl": "Gedwongen laadmodus is"
       },
       "titleFormatted": {
-        "en": "Force charge mode is [[mode]]",
-        "nl": "Gedwongen laadmodus is [[mode]]"
+        "en": "Force charge mode !{{is|is not}} [[mode]]",
+        "nl": "Gedwongen laadmodus !{{is|is niet}} [[mode]]"
       },
       "hint": {
         "en": "Check current force charge mode",
@@ -781,8 +781,8 @@
         "nl": "Bedrijfsmodus is"
       },
       "titleFormatted": {
-        "en": "Operation mode is [[mode]]",
-        "nl": "Bedrijfsmodus is [[mode]]"
+        "en": "Operation mode !{{is|is not}} [[mode]]",
+        "nl": "Bedrijfsmodus !{{is|is niet}} [[mode]]"
       },
       "hint": {
         "en": "Check current battery operation mode",
@@ -850,8 +850,8 @@
         "nl": "Optimalizatie modus is"
       },
       "titleFormatted": {
-        "en": "Work mode is [[mode]]",
-        "nl": "Optimalizatie modus is [[mode]]"
+        "en": "Work mode !{{is|is not}} [[mode]]",
+        "nl": "Optimalizatie modus !{{is|is niet}} [[mode]]"
       },
       "hint": {
         "en": "Check current work mode",
@@ -905,8 +905,8 @@
         "nl": "Gedwongen laad vermogen is groter dan"
       },
       "titleFormatted": {
-        "en": "Force charge power is greater than [[power]] W",
-        "nl": "Gedwongen laad vermogen is groter dan [[power]] W"
+        "en": "Force charge power !{{is greater than|is not greater than}} [[power]] W",
+        "nl": "Gedwongen laad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
       },
       "hint": {
         "en": "Check if force charge power is above a threshold",
@@ -933,8 +933,8 @@
         "nl": "Gedwongen ontlaad vermogen is groter dan"
       },
       "titleFormatted": {
-        "en": "Force discharge power is greater than [[power]] W",
-        "nl": "Gedwongen ontlaad vermogen is groter dan [[power]] W"
+        "en": "Force discharge power !{{is greater than|is not greater than}} [[power]] W",
+        "nl": "Gedwongen ontlaad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
       },
       "hint": {
         "en": "Check if force discharge power is above a threshold",
@@ -961,8 +961,8 @@
         "nl": "Gedwongen SOC doel is groter dan"
       },
       "titleFormatted": {
-        "en": "Force SOC target is greater than [[target]]%",
-        "nl": "Gedwongen SOC doel is groter dan [[target]]%"
+        "en": "Force SOC target !{{is greater than|is not greater than}} [[target]]%",
+        "nl": "Gedwongen SOC doel !{{is groter dan|is niet groter dan}} [[target]]%"
       },
       "hint": {
         "en": "Check if force SOC target is above a threshold",
@@ -988,6 +988,10 @@
         "en": "Battery is charging",
         "nl": "Batterij is aan het laden"
     },
+    "titleFormatted": {
+        "en": "Battery !{{is|is not}} charging",
+        "nl": "Batterij !{{is|is niet}} aan het laden"
+    },
     "args": []
     },
     {
@@ -995,6 +999,10 @@
     "title": {
         "en": "Battery is discharging",
         "nl": "Batterij is aan het ontladen"
+    },
+    "titleFormatted": {
+        "en": "Battery !{{is|is not}} discharging",
+        "nl": "Batterij !{{is|is niet}} aan het ontladen"
     },
     "args": []
     },
@@ -1005,8 +1013,8 @@
         "nl": "Batterijniveau is boven"
     },
     "titleFormatted": {
-        "en": "Battery level is above [[percentage]]%",
-        "nl": "Batterijniveau is boven [[percentage]]%"
+        "en": "Battery level !{{is above|is not above}} [[percentage]]%",
+        "nl": "Batterijniveau !{{is boven|is niet boven}} [[percentage]]%"
     },
     "args": [
         {
@@ -1029,8 +1037,8 @@
         "nl": "Batterijniveau is onder"
     },
     "titleFormatted": {
-        "en": "Battery level is below [[percentage]]%",
-        "nl": "Batterijniveau is onder [[percentage]]%"
+        "en": "Battery level !{{is below|is not below}} [[percentage]]%",
+        "nl": "Batterijniveau !{{is onder|is niet onder}} [[percentage]]%"
     },
     "args": [
         {
@@ -1052,6 +1060,10 @@
         "en": "Battery has fault",
         "nl": "Batterij heeft storing"
     },
+    "titleFormatted": {
+        "en": "Battery !{{has|does not have}} a fault",
+        "nl": "Batterij !{{heeft|heeft geen}} storing"
+    },
     "args": []
     },
     {
@@ -1061,8 +1073,8 @@
         "nl": "Temperatuur is boven"
     },
     "titleFormatted": {
-        "en": "Temperature is above [[temperature]]°C",
-        "nl": "Temperatuur is boven [[temperature]]°C"
+        "en": "Temperature !{{is above|is not above}} [[temperature]]°C",
+        "nl": "Temperatuur !{{is boven|is niet boven}} [[temperature]]°C"
     },
     "args": [
         {

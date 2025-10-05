@@ -11,30 +11,55 @@ class ModbusClient extends EventEmitter {
     this.connectionTimeout = 5000;
     this.reconnectInterval = null;
     this.config = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10;
+    this.reconnectDelay = 5000; // Start with 5 seconds
+    this.maxReconnectDelay = 60000; // Max 60 seconds
+    this.isReconnecting = false;
   }
 
   async connect(config) {
     this.config = config;
-    
+
     try {
       // Close existing connection if any
-      if (this.connection && !this.connection.destroyed) {
-        this.socket.end();
+      if (this.connection) {
+        try {
+          if (this.socket && !this.socket.destroyed) {
+            this.socket.end();
+          }
+        } catch (err) {
+          console.log('Error closing existing connection:', err.message);
+        }
+        this.connection = null;
+        this.socket = null;
       }
+
       console.dir(config);
       // Create new connection
       this.connection = await new Promise((resolve, reject) => {
+        const connectTimeout = setTimeout(() => {
+          reject(new Error('Connection timeout'));
+        }, this.connectionTimeout);
+
         modbus.tcp.connect(config.port || 502, config.ip, { debug: null }, (err, connection) => {
+          clearTimeout(connectTimeout);
           if (err) return reject(err);
           resolve(connection);
         });
       });
-      //When we make it passed the connect without error 
+
+      //When we make it passed the connect without error
       this.connected = true;
+      this.reconnectAttempts = 0; // Reset on successful connection
+      this.isReconnecting = false;
       this.emit('connect');
+
       // Set timeout on the underlying socket
       this.socket = this.connection?.transport?.stream;
-      this.socket.setTimeout(this.connectionTimeout);
+      if (this.socket) {
+        this.socket.setTimeout(this.connectionTimeout);
+      }
 
       // Setup event handlers
       this.setupConnectionHandlers();
@@ -42,6 +67,7 @@ class ModbusClient extends EventEmitter {
       // You can now use this.connection to read/write
       return true;
     } catch (error) {
+      this.connected = false;
       this.emit('error', error);
       return false;
     }
@@ -58,9 +84,19 @@ class ModbusClient extends EventEmitter {
     });
 
     this.connection.on('error', (error) => {
+      console.log('Connection error:', error.message);
       this.connected = false;
       this.emit('error', error);
-      this.scheduleReconnect();
+
+      // Handle buffer/transport errors by reconnecting
+      if (error.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
+          error.message.includes('buffer') ||
+          error.message.includes('Transport')) {
+        console.log('Buffer/transport error detected, forcing reconnection');
+        this.forceReconnect();
+      } else {
+        this.scheduleReconnect();
+      }
     });
 
     this.connection.on('close', () => {
@@ -70,21 +106,72 @@ class ModbusClient extends EventEmitter {
     });
 
     this.connection.on('timeout', () => {
-      this.connected = false;
-      this.emit('error', new Error('Connection timeout'));
-      this.scheduleReconnect();
+      console.log('Socket timeout detected');
+      // Don't immediately reconnect on timeout, just log it
+      // Let the read/write operations handle their own timeouts
     });
+
+    // Listen for errors on the underlying socket/transport
+    try {
+      if (this.socket) {
+        this.socket.on('error', (error) => {
+          console.log('Socket error:', error.message);
+          // Socket errors often indicate connection issues
+          this.connected = false;
+          this.emit('error', error);
+        });
+      }
+
+      // Listen for transport errors on the connection's transport layer
+      if (this.connection.transport) {
+        this.connection.transport.on('error', (error) => {
+          console.log('Transport layer error:', error.message);
+          // Transport errors indicate malformed packets - need to reconnect
+          this.connected = false;
+          this.forceReconnect();
+        });
+      }
+    } catch (err) {
+      console.log('Error setting up socket/transport handlers:', err.message);
+    }
   }
 
   scheduleReconnect() {
-    if (this.reconnectInterval) return;
-    
+    if (this.reconnectInterval || this.isReconnecting) {
+      console.log('Reconnect already scheduled or in progress');
+      return;
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log('Max reconnection attempts reached. Giving up.');
+      this.emit('error', new Error('Max reconnection attempts reached'));
+      return;
+    }
+
+    this.isReconnecting = true;
+    this.reconnectAttempts++;
+
+    // Exponential backoff: delay * 2^(attempts-1), capped at maxReconnectDelay
+    const delay = Math.min(
+      this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
+      this.maxReconnectDelay
+    );
+
+    console.log(`Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+
     this.reconnectInterval = setTimeout(async () => {
       this.reconnectInterval = null;
       if (this.config) {
-        await this.connect(this.config);
+        console.log(`Attempting reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        const success = await this.connect(this.config);
+        if (!success) {
+          this.isReconnecting = false;
+          this.scheduleReconnect(); // Try again with exponential backoff
+        }
+      } else {
+        this.isReconnecting = false;
       }
-    }, 5000); // Reconnect after 5 seconds
+    }, delay);
   }
 
   clearReconnectInterval() {
@@ -94,33 +181,88 @@ class ModbusClient extends EventEmitter {
     }
   }
 
-  async readHoldingRegisters(slaveId, address, quantity) {
+  forceReconnect() {
+    console.log('Forcing immediate reconnection due to transport error');
+
+    // Clear any pending reconnection
+    this.clearReconnectInterval();
+    this.isReconnecting = false;
+
+    // Close current connection
+    try {
+      if (this.socket && !this.socket.destroyed) {
+        this.socket.destroy(); // Destroy instead of end() for immediate close
+      }
+    } catch (err) {
+      console.log('Error destroying socket:', err.message);
+    }
+
+    this.connection = null;
+    this.socket = null;
+    this.connected = false;
+
+    // Schedule immediate reconnection (small delay to allow cleanup)
+    setTimeout(() => {
+      if (this.config) {
+        this.connect(this.config);
+      }
+    }, 1000);
+  }
+
+  async readHoldingRegisters(slaveId, address, quantity, retries = 2) {
     if (!this.connected || !this.connection) {
       throw new Error('Modbus not connected');
     }
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Read operation timeout'));
-      }, this.connectionTimeout);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Read operation timeout'));
+          }, this.connectionTimeout);
 
-      this.connection.readHoldingRegisters({ 
-        unitId: slaveId || 1,
-        address, 
-        quantity 
-      }, (err, info) => {
-        clearTimeout(timeout);
-        
-        if (err) {
-          reject(err);
-        } else {
-          resolve(info.response.data);
+          this.connection.readHoldingRegisters({
+            unitId: slaveId || 1,
+            address,
+            quantity
+          }, (err, info) => {
+            clearTimeout(timeout);
+
+            if (err) {
+              reject(err);
+            } else {
+              resolve(info.response.data);
+            }
+          });
+        });
+
+        return result; // Success, return the data
+      } catch (err) {
+        // Check for buffer/transport errors
+        if (err.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
+            err.message.includes('buffer bounds')) {
+          console.log('Buffer error during read, forcing reconnection');
+          this.forceReconnect();
+          throw new Error('Transport error - reconnecting');
         }
-      });
-    });
+
+        if (attempt < retries) {
+          console.log(`Read failed (attempt ${attempt + 1}/${retries + 1}), retrying...`, err.message);
+
+          // Check if still connected, if not don't retry
+          if (!this.connected || !this.connection) {
+            throw new Error('Connection lost during retry');
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        } else {
+          throw err; // Final attempt failed, throw error
+        }
+      }
+    }
   }
 
-  async writeSingleRegister(slaveId, address, value) {
+  async writeSingleRegister(slaveId, address, value, retries = 2) {
     if (!this.connected || !this.connection) {
       throw new Error('Modbus not connected');
     }
@@ -129,25 +271,52 @@ class ModbusClient extends EventEmitter {
     const bufferValue = Buffer.allocUnsafe(2);
     bufferValue.writeUInt16BE(value, 0);
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Write operation timeout'));
-      }, this.connectionTimeout);
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Write operation timeout'));
+          }, this.connectionTimeout);
 
-      this.connection.writeSingleRegister({ 
-        unitId: slaveId || 1,
-        address, 
-        value: bufferValue 
-      }, (err, info) => {
-        clearTimeout(timeout);
-        
-        if (err) {
-          reject(err);
-        } else {
-          resolve(info);
+          this.connection.writeSingleRegister({
+            unitId: slaveId || 1,
+            address,
+            value: bufferValue
+          }, (err, info) => {
+            clearTimeout(timeout);
+
+            if (err) {
+              reject(err);
+            } else {
+              resolve(info);
+            }
+          });
+        });
+
+        return result; // Success
+      } catch (err) {
+        // Check for buffer/transport errors
+        if (err.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
+            err.message.includes('buffer bounds')) {
+          console.log('Buffer error during write, forcing reconnection');
+          this.forceReconnect();
+          throw new Error('Transport error - reconnecting');
         }
-      });
-    });
+
+        if (attempt < retries) {
+          console.log(`Write failed (attempt ${attempt + 1}/${retries + 1}), retrying...`, err.message);
+
+          // Check if still connected, if not don't retry
+          if (!this.connected || !this.connection) {
+            throw new Error('Connection lost during retry');
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms before retry
+        } else {
+          throw err; // Final attempt failed, throw error
+        }
+      }
+    }
   }
 
   async writeMultipleRegisters(slaveId, address, values) {

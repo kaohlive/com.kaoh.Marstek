@@ -1825,6 +1825,36 @@
               "value": 1000,
               "min": 0,
               "max": 10000
+            },
+            {
+              "id": "connection_timeout",
+              "type": "number",
+              "label": {
+                "en": "Connection Timeout (ms)",
+                "nl": "Verbindingstimeout (ms)"
+              },
+              "hint": {
+                "en": "Timeout for Modbus read/write operations. Increase if you have a slow or unstable connection",
+                "nl": "Timeout voor Modbus lees/schrijf operaties. Verhoog bij trage of instabiele verbinding"
+              },
+              "value": 5000,
+              "min": 1000,
+              "max": 30000
+            },
+            {
+              "id": "max_consecutive_errors",
+              "type": "number",
+              "label": {
+                "en": "Max Errors Before Unavailable",
+                "nl": "Max Fouten Voor Onbeschikbaar"
+              },
+              "hint": {
+                "en": "Number of consecutive polling errors before marking device unavailable",
+                "nl": "Aantal opeenvolgende polling fouten voordat apparaat onbeschikbaar wordt gemarkeerd"
+              },
+              "value": 3,
+              "min": 1,
+              "max": 10
             }
           ]
         },
