@@ -34,5 +34,8 @@
   },
   "1.0.11": {
     "en": "Removed deprecated set charge power workflow actions"
+  },
+  "1.0.12": {
+    "en": "flow formatting fixes and build in delay for mode switch"
   }
 }
