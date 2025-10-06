@@ -37,5 +37,8 @@
   },
   "1.0.12": {
     "en": "flow formatting fixes and build in delay for mode switch"
+  },
+  "1.1.0": {
+    "en": "Improve connection management for timeouts and retry patterns"
   }
 }
