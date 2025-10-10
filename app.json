@@ -1994,8 +1994,7 @@
       ],
       "getable": true,
       "setable": true,
-      "uiComponent": "picker",
-      "insights": true
+      "uiComponent": "picker"
     },
     "force_charge_power": {
       "type": "number",
@@ -2165,8 +2164,7 @@
       ],
       "getable": true,
       "setable": true,
-      "uiComponent": "picker",
-      "insights": true
+      "uiComponent": "picker"
     }
   }
 }

@@ -756,9 +756,13 @@ async writeDeviceName(name, config) {
       const slaveId = this.settings.slave_id || 1;
       await this.modbus.writeSingleRegister(slaveId, 41200, (value ? 0 : 1));
       this.log('Backup mode set to: '+value+', now trigger the worklow card:');
+
+      // Update the capability value to log the change in insights/timeline
+      await this.setCapabilityValue('backup_mode', value);
+
       if (this.backupModeChangedTrigger && !opts.fromCloudSync) {
-        await this.backupModeChangedTrigger.trigger(this, 
-          { mode: value }, 
+        await this.backupModeChangedTrigger.trigger(this,
+          { mode: value },
           { mode: value.toString() }
         );
       }
@@ -778,10 +782,13 @@ async writeDeviceName(name, config) {
       const slaveId = this.settings.slave_id || 1;
       await this.modbus.writeSingleRegister(slaveId, 42020, Math.round(value));
       this.log('Force charge power set to:'+value+' and trigger the workflow');
-      
+
+      // Update the capability value to reflect the change in UI
+      await this.setCapabilityValue('force_charge_power', Math.round(value));
+
       if (this.forceChargePowerChangedTrigger && !opts.fromCloudSync) {
-        await this.forceChargePowerChangedTrigger.trigger(this, 
-          { power: value }, 
+        await this.forceChargePowerChangedTrigger.trigger(this,
+          { power: value },
           { power: value }
         );
       }
@@ -800,9 +807,13 @@ async writeDeviceName(name, config) {
       const slaveId = this.settings.slave_id || 1;
       await this.modbus.writeSingleRegister(slaveId, 42021, Math.round(value));
       this.log('Force discharge power set to: '+value+', now trigger flow cards');
+
+      // Update the capability value to reflect the change in UI
+      await this.setCapabilityValue('force_discharge_power', Math.round(value));
+
       if (this.forceDischargePowerChangedTrigger && !opts.fromCloudSync) {
-        await this.forceDischargePowerChangedTrigger.trigger(this, 
-          { power: value }, 
+        await this.forceDischargePowerChangedTrigger.trigger(this,
+          { power: value },
           { power: value }
         );
       }
@@ -838,6 +849,9 @@ async writeDeviceName(name, config) {
         this.log(`Waiting ${delay}ms for battery to accept force mode change...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
+
+      // Update the capability value to log the change in insights/timeline
+      await this.setCapabilityValue('force_charge_mode', value);
 
       //Now trigger the workflow card
       if (this.forceChargeModeChangedTrigger && !opts.fromCloudSync) {
@@ -883,13 +897,16 @@ async writeDeviceName(name, config) {
       }
       this.log('Work mode set to:'+value+', now trigger the workflow card');
 
+      // Update the capability value to log the change in insights/timeline
+      await this.setCapabilityValue('user_work_mode', value);
+
       if (this.userWorkModeChangedTrigger && !opts.fromCloudSync) {
-        await this.userWorkModeChangedTrigger.trigger(this, 
-          { mode: value }, 
+        await this.userWorkModeChangedTrigger.trigger(this,
+          { mode: value },
           { mode: value }
         );
       }
-      
+
     } catch (error) {
       this.log('Error setting work mode:', error);
       throw new Error('Failed to set work mode');
@@ -913,9 +930,13 @@ async writeDeviceName(name, config) {
       await this.setCapabilityValue('force_charge_mode','force_soc');
       await this.modbus.writeSingleRegister(slaveId, 42011, value);
       this.log('Set the force SOC target to '+value+', now trigger the workflow')
+
+      // Update the capability value to reflect the change in UI
+      await this.setCapabilityValue('force_charge_target', value);
+
       if (this.forceChargeTargetChangedTrigger && !opts.fromCloudSync) {
-        await this.forceChargeTargetChangedTrigger.trigger(this, 
-          { target: value }, 
+        await this.forceChargeTargetChangedTrigger.trigger(this,
+          { target: value },
           { target: value }
         );
       }
