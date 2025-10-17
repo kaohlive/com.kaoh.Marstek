@@ -50,6 +50,13 @@
         "en": "OTA upgrade",
         "nl": "software upgrade"
       }
+    },
+    {
+      "id": "bypass",
+      "title": {
+        "en": "Bypass mode",
+        "nl": "Bypassmodus"
+      }
     }
   ],
   "getable": true,

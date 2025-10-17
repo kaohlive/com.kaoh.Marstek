@@ -440,7 +440,15 @@
             "en": "Operation Mode",
             "nl": "Bedrijfsmodus"
           }
-        }
+        },
+        {
+          "name": "prevMode",
+          "type": "string",
+          "title": {
+            "en": "Previous Operation Mode",
+            "nl": "Vorige bedrijfsmodus"
+          }
+        }        
       ],
       "args": [
         {

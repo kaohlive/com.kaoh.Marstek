@@ -29,6 +29,9 @@ class VenusBatteryDevice extends Homey.Device {
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
+    // Fix missing capabilities
+    await this.repairCapabilities();
+
     // Start polling
     this.startPolling();
 
@@ -39,6 +42,16 @@ class VenusBatteryDevice extends Homey.Device {
     //Setup some global vars that we get from the device on init
     this.batteryCapacity=0;
     this.deviceVersion = 'unknown'; // Will be set to 'v1v2' or 'v3' based on firmware
+  }
+
+  async repairCapabilities()
+  {
+    let neededFix = false;
+    if(!this.hasCapability('operation_mode')) {
+      await this.addCapability('operation_mode');
+      this.log('Registered missing operation_mode capability')
+    }
+    return neededFix;
   }
 
   async onSettings({ oldSettings, newSettings, changedKeys }) {
@@ -419,10 +432,11 @@ async writeDeviceName(name, config) {
       // Inverter state
       const reg_inverter_state = await this.modbus.readHoldingRegisters(slaveId, 35100, 1);
       const inverter_state = ModbusClient.bufferToUint16(Buffer.concat(reg_inverter_state));
+      this.log('Device inverstate: '+inverter_state)
       const modeStr = this.driver.INVERTER_MODES[inverter_state];
       // Trigger operation mode change event
       const previousMode = this.getCapabilityValue('operation_mode');
-
+      this.log('Previous mode: '+previousMode+' - New mode: '+modeStr);
       // Only set capability if value changed to prevent unnecessary triggers
       if (previousMode !== modeStr) {
         this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
@@ -430,7 +444,7 @@ async writeDeviceName(name, config) {
         // Trigger operation mode change event only after value is set and if there was a previous value
         if (previousMode) {
           this.homey.flow.getDeviceTriggerCard('operation_mode_changed')
-            .trigger(this, { mode: modeStr }, { mode: modeStr })
+            .trigger(this, { mode: modeStr, prevMode: previousMode })
             .catch(this.error);
         }
       }
