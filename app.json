@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
@@ -557,6 +557,14 @@
             "title": {
               "en": "Operation Mode",
               "nl": "Bedrijfsmodus"
+            }
+          },
+          {
+            "name": "prevMode",
+            "type": "string",
+            "title": {
+              "en": "Previous Operation Mode",
+              "nl": "Vorige bedrijfsmodus"
             }
           }
         ],
@@ -2113,6 +2121,13 @@
           "title": {
             "en": "OTA upgrade",
             "nl": "software upgrade"
+          }
+        },
+        {
+          "id": "bypass",
+          "title": {
+            "en": "Bypass mode",
+            "nl": "Bypassmodus"
           }
         }
       ],

@@ -40,5 +40,8 @@
   },
   "1.1.0": {
     "en": "Improve connection management for timeouts and retry patterns"
+  },
+  "1.1.1": {
+    "en": "Added support for bypassmode and extra mode change token"
   }
 }
