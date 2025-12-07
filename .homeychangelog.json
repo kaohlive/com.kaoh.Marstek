@@ -43,5 +43,8 @@
   },
   "1.1.1": {
     "en": "Added support for bypassmode and extra mode change token"
+  },
+  "1.1.2": {
+    "en": "Deprecated action card and updated social links"
   }
 }
