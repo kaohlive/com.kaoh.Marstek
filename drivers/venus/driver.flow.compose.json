@@ -1101,6 +1101,7 @@
 ],
   "actions": [
     {
+      "deprecated": true,
       "id": "set_charge_mode",
       "title": {
         "en": "Set charge mode",
