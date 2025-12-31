@@ -46,5 +46,8 @@
   },
   "1.1.2": {
     "en": "Deprecated action card and updated social links"
+  },
+  "1.1.3": {
+    "en": "added max power limits capabilities"
   }
 }
