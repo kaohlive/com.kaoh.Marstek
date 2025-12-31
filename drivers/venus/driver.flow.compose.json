@@ -1097,7 +1097,63 @@
         }
         }
     ]
-    }    
+    },
+    {
+      "id": "max_charge_power_limit_below",
+      "title": {
+        "en": "Max charge power limit is below",
+        "nl": "Max laad vermogen limiet is onder"
+      },
+      "titleFormatted": {
+        "en": "Max charge power limit !{{is below|is not below}} [[power]] W",
+        "nl": "Max laad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
+      },
+      "hint": {
+        "en": "Check if the device protection system is limiting charge power below a threshold (e.g. due to low temperature)",
+        "nl": "Controleer of het apparaatbeveiligingssysteem het laadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "max_discharge_power_limit_below",
+      "title": {
+        "en": "Max discharge power limit is below",
+        "nl": "Max ontlaad vermogen limiet is onder"
+      },
+      "titleFormatted": {
+        "en": "Max discharge power limit !{{is below|is not below}} [[power]] W",
+        "nl": "Max ontlaad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
+      },
+      "hint": {
+        "en": "Check if the device protection system is limiting discharge power below a threshold (e.g. due to low temperature)",
+        "nl": "Controleer of het apparaatbeveiligingssysteem het ontlaadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    }
 ],
   "actions": [
     {

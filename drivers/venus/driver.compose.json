@@ -54,7 +54,9 @@
     "measure_battery",
     "force_discharge_power",
     "force_charge_power",
-    "backup_mode"
+    "backup_mode",
+    "max_charge_power_limit",
+    "max_discharge_power_limit"
   ],
   "capabilitiesOptions": {
     "measure_voltage": {

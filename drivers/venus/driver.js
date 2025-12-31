@@ -117,6 +117,18 @@ class VenusBatteryDriver extends Homey.Driver {
     .registerRunListener(async (args) => {
       return await args.device.conditionForceChargeTargetGreaterThan(args);
     });
+
+  // Max charge power limit below condition
+  this.homey.flow.getConditionCard('max_charge_power_limit_below')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionMaxChargePowerLimitBelow(args);
+    });
+
+  // Max discharge power limit below condition
+  this.homey.flow.getConditionCard('max_discharge_power_limit_below')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionMaxDischargePowerLimitBelow(args);
+    });
 }
 
 registerFlowCardActions() {

@@ -1,0 +1,23 @@
+{
+  "type": "number",
+  "title": {
+    "en": "Max charge power limit",
+    "nl": "Max laad vermogen limiet"
+  },
+  "desc": {
+    "en": "Maximum charging power allowed by device protection",
+    "nl": "Maximum laadvermogen toegestaan door apparaatbeveiliging"
+  },
+  "units": {
+    "en": "W",
+    "nl": "W"
+  },
+  "min": 0,
+  "max": 2500,
+  "decimals": 0,
+  "insights": true,
+  "getable": true,
+  "setable": false,
+  "uiComponent": "sensor",
+  "icon": "/assets/power.svg"
+}

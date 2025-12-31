@@ -49,7 +49,18 @@ class VenusBatteryDevice extends Homey.Device {
     let neededFix = false;
     if(!this.hasCapability('operation_mode')) {
       await this.addCapability('operation_mode');
-      this.log('Registered missing operation_mode capability')
+      this.log('Registered missing operation_mode capability');
+      neededFix = true;
+    }
+    if(!this.hasCapability('max_charge_power_limit')) {
+      await this.addCapability('max_charge_power_limit');
+      this.log('Registered missing max_charge_power_limit capability');
+      neededFix = true;
+    }
+    if(!this.hasCapability('max_discharge_power_limit')) {
+      await this.addCapability('max_discharge_power_limit');
+      this.log('Registered missing max_discharge_power_limit capability');
+      neededFix = true;
     }
     return neededFix;
   }
@@ -497,6 +508,28 @@ async writeDeviceName(name, config) {
       const currentBackupMode = this.getCapabilityValue('backup_mode');
       if (currentBackupMode !== backupModeValue) {
         this.setCapabilityValue('backup_mode', backupModeValue).catch(this.error);
+      }
+
+      // Read max charge power limit (register 44002) - device protection limit
+      const reg_max_charge_power = await this.modbus.readHoldingRegisters(slaveId, 44002, 1);
+      const max_charge_power = ModbusClient.bufferToUint16(Buffer.concat(reg_max_charge_power));
+      console.log('Max charge power limit: ' + max_charge_power + 'W');
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      const currentMaxChargePower = this.getCapabilityValue('max_charge_power_limit');
+      if (currentMaxChargePower !== max_charge_power) {
+        this.setCapabilityValue('max_charge_power_limit', max_charge_power).catch(this.error);
+      }
+
+      // Read max discharge power limit (register 44003) - device protection limit
+      const reg_max_discharge_power = await this.modbus.readHoldingRegisters(slaveId, 44003, 1);
+      const max_discharge_power = ModbusClient.bufferToUint16(Buffer.concat(reg_max_discharge_power));
+      console.log('Max discharge power limit: ' + max_discharge_power + 'W');
+
+      // Only set capability if value changed to prevent unnecessary triggers
+      const currentMaxDischargePower = this.getCapabilityValue('max_discharge_power_limit');
+      if (currentMaxDischargePower !== max_discharge_power) {
+        this.setCapabilityValue('max_discharge_power_limit', max_discharge_power).catch(this.error);
       }
 
     } catch (error) {
@@ -1121,11 +1154,49 @@ async writeDeviceName(name, config) {
     try {
       const currentTarget = this.getCapabilityValue('force_charge_target') || 0;
       const threshold = Number(args.target);
-      
+
       this.log(`Checking force charge target: current=${currentTarget}%, threshold=${threshold}%`);
       return currentTarget > threshold;
     } catch (error) {
       this.error('Error checking force charge target condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if max charge power limit is below threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.power - Power threshold in watts
+   * @returns {boolean} - True if current limit is below threshold
+   */
+  async conditionMaxChargePowerLimitBelow(args) {
+    try {
+      const currentLimit = this.getCapabilityValue('max_charge_power_limit') || 0;
+      const threshold = Number(args.power);
+
+      this.log(`Checking max charge power limit: current=${currentLimit}W, threshold=${threshold}W`);
+      return currentLimit < threshold;
+    } catch (error) {
+      this.error('Error checking max charge power limit condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if max discharge power limit is below threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.power - Power threshold in watts
+   * @returns {boolean} - True if current limit is below threshold
+   */
+  async conditionMaxDischargePowerLimitBelow(args) {
+    try {
+      const currentLimit = this.getCapabilityValue('max_discharge_power_limit') || 0;
+      const threshold = Number(args.power);
+
+      this.log(`Checking max discharge power limit: current=${currentLimit}W, threshold=${threshold}W`);
+      return currentLimit < threshold;
+    } catch (error) {
+      this.error('Error checking max discharge power limit condition:', error);
       return false;
     }
   }
