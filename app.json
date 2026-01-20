@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "brandColor": "#1d8296",
   "compatibility": ">=12.4.0",
   "sdk": 3,
@@ -30,6 +30,24 @@
   },
   "homeyCommunityTopicId": 142928,
   "source": "https://github.com/kaohlive/com.kaoh.Marstek",
+  "api": {
+    "getDevices": {
+      "method": "GET",
+      "path": "/devices"
+    },
+    "readRegister": {
+      "method": "POST",
+      "path": "/readRegister"
+    },
+    "writeRegister": {
+      "method": "POST",
+      "path": "/writeRegister"
+    },
+    "pollState": {
+      "method": "POST",
+      "path": "/pollState"
+    }
+  },
   "flow": {
     "triggers": [
       {
@@ -1376,6 +1394,72 @@
             "step": 5
           }
         ]
+      },
+      {
+        "id": "charging_cutoff_soc_above",
+        "title": {
+          "en": "Charging cutoff SOC is above",
+          "nl": "Laad afkap SOC is boven"
+        },
+        "titleFormatted": {
+          "en": "Charging cutoff SOC !{{is above|is not above}} [[percentage]]%",
+          "nl": "Laad afkap SOC !{{is boven|is niet boven}} [[percentage]]%"
+        },
+        "hint": {
+          "en": "Check if the charging cutoff SOC setting is above a threshold",
+          "nl": "Controleer of de laad afkap SOC instelling boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 40,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "id": "discharging_cutoff_soc_above",
+        "title": {
+          "en": "Discharging cutoff SOC is above",
+          "nl": "Ontlaad afkap SOC is boven"
+        },
+        "titleFormatted": {
+          "en": "Discharging cutoff SOC (reserve) !{{is above|is not above}} [[percentage]]%",
+          "nl": "Ontlaad afkap SOC (reserve) !{{is boven|is niet boven}} [[percentage]]%"
+        },
+        "hint": {
+          "en": "Check if the discharging cutoff SOC (reserve) setting is above a threshold",
+          "nl": "Controleer of de ontlaad afkap SOC (reserve) instelling boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 12,
+            "max": 30,
+            "step": 1
+          }
+        ]
       }
     ],
     "actions": [
@@ -1690,6 +1774,72 @@
             "step": 1
           }
         ]
+      },
+      {
+        "id": "set_charging_cutoff_soc",
+        "title": {
+          "en": "Set charging cutoff SOC",
+          "nl": "Laad afkap SOC instellen"
+        },
+        "titleFormatted": {
+          "en": "Set charging cutoff SOC to [[percentage]]%",
+          "nl": "Laad afkap SOC instellen op [[percentage]]%"
+        },
+        "hint": {
+          "en": "Set the SOC level at which charging stops (40-100%)",
+          "nl": "Stel het SOC niveau in waarbij laden stopt (40-100%)"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 40,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "id": "set_discharging_cutoff_soc",
+        "title": {
+          "en": "Set discharging cutoff SOC (reserve)",
+          "nl": "Ontlaad afkap SOC (reserve) instellen"
+        },
+        "titleFormatted": {
+          "en": "Set discharging cutoff SOC to [[percentage]]%",
+          "nl": "Ontlaad afkap SOC instellen op [[percentage]]%"
+        },
+        "hint": {
+          "en": "Set the SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+          "nl": "Stel het SOC reserve niveau in waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 12,
+            "max": 30,
+            "step": 1
+          }
+        ]
       }
     ]
   },
@@ -1979,6 +2129,47 @@
               "value": "unknown"
             }
           ]
+        },
+        {
+          "type": "group",
+          "label": {
+            "en": "Battery Protection Settings",
+            "nl": "Batterij Bescherming Instellingen"
+          },
+          "children": [
+            {
+              "id": "charging_cutoff_soc",
+              "type": "number",
+              "label": {
+                "en": "Charging Cutoff SOC (%)",
+                "nl": "Laad Afkap SOC (%)"
+              },
+              "hint": {
+                "en": "SOC level at which charging stops (40-100%)",
+                "nl": "SOC niveau waarbij laden stopt (40-100%)"
+              },
+              "value": 100,
+              "min": 40,
+              "max": 100,
+              "units": "%"
+            },
+            {
+              "id": "discharging_cutoff_soc",
+              "type": "number",
+              "label": {
+                "en": "Discharging Cutoff SOC (%)",
+                "nl": "Ontlaad Afkap SOC (%)"
+              },
+              "hint": {
+                "en": "SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+                "nl": "SOC reserve niveau waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+              },
+              "value": 15,
+              "min": 12,
+              "max": 30,
+              "units": "%"
+            }
+          ]
         }
       ],
       "id": "venus"
@@ -2157,6 +2348,7 @@
       },
       "min": 0,
       "max": 2500,
+      "deprecated": true,
       "decimals": 0,
       "insights": true,
       "getable": true,
@@ -2179,6 +2371,7 @@
         "nl": "W"
       },
       "min": 0,
+      "deprecated": true,
       "max": 2500,
       "decimals": 0,
       "insights": true,

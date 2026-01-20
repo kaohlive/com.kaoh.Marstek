@@ -49,5 +49,8 @@
   },
   "1.1.3": {
     "en": "added max power limits capabilities"
+  },
+  "1.1.4": {
+    "en": "Test page and stability improvements"
   }
 }
