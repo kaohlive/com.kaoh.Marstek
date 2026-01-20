@@ -91,7 +91,9 @@ class ModbusClient extends EventEmitter {
       // Handle buffer/transport errors by reconnecting
       if (error.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
           error.message.includes('buffer') ||
-          error.message.includes('Transport')) {
+          error.message.includes('outside buffer') ||
+          error.message.includes('Transport') ||
+          error.name === 'RangeError') {
         console.log('Buffer/transport error detected, forcing reconnection');
         this.forceReconnect();
       } else {
@@ -129,6 +131,22 @@ class ModbusClient extends EventEmitter {
           // Transport errors indicate malformed packets - need to reconnect
           this.connected = false;
           this.forceReconnect();
+        });
+      }
+
+      // Handle uncaught exceptions in the stream/transport layer
+      // These can occur when modbus-stream receives malformed data
+      if (this.connection.transport && this.connection.transport.stream) {
+        this.connection.transport.stream.on('error', (error) => {
+          console.log('Transport stream error:', error.message);
+          this.connected = false;
+          // Check for buffer bounds error
+          if (error.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
+              error.message.includes('buffer bounds') ||
+              error.message.includes('outside buffer')) {
+            console.log('Buffer bounds error in stream - forcing reconnect');
+            this.forceReconnect();
+          }
         });
       }
     } catch (err) {
@@ -240,7 +258,9 @@ class ModbusClient extends EventEmitter {
       } catch (err) {
         // Check for buffer/transport errors
         if (err.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
-            err.message.includes('buffer bounds')) {
+            err.name === 'RangeError' ||
+            err.message.includes('buffer bounds') ||
+            err.message.includes('outside buffer')) {
           console.log('Buffer error during read, forcing reconnection');
           this.forceReconnect();
           throw new Error('Transport error - reconnecting');
@@ -297,7 +317,9 @@ class ModbusClient extends EventEmitter {
       } catch (err) {
         // Check for buffer/transport errors
         if (err.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
-            err.message.includes('buffer bounds')) {
+            err.name === 'RangeError' ||
+            err.message.includes('buffer bounds') ||
+            err.message.includes('outside buffer')) {
           console.log('Buffer error during write, forcing reconnection');
           this.forceReconnect();
           throw new Error('Transport error - reconnecting');

@@ -129,6 +129,18 @@ class VenusBatteryDriver extends Homey.Driver {
     .registerRunListener(async (args) => {
       return await args.device.conditionMaxDischargePowerLimitBelow(args);
     });
+
+  // Charging cutoff SOC above condition
+  this.homey.flow.getConditionCard('charging_cutoff_soc_above')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionChargingCutoffSocAbove(args);
+    });
+
+  // Discharging cutoff SOC above condition
+  this.homey.flow.getConditionCard('discharging_cutoff_soc_above')
+    .registerRunListener(async (args) => {
+      return await args.device.conditionDischargingCutoffSocAbove(args);
+    });
 }
 
 registerFlowCardActions() {
@@ -175,6 +187,18 @@ registerFlowCardActions() {
   this.homey.flow.getActionCard('set_force_charge_target')
     .registerRunListener(async (args) => {
       return await args.device.actionSetForceChargeTarget(args);
+    });
+
+  // Set charging cutoff SOC action
+  this.homey.flow.getActionCard('set_charging_cutoff_soc')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetChargingCutoffSoc(args);
+    });
+
+  // Set discharging cutoff SOC action
+  this.homey.flow.getActionCard('set_discharging_cutoff_soc')
+    .registerRunListener(async (args) => {
+      return await args.device.actionSetDischargingCutoffSoc(args);
     });
 }
 

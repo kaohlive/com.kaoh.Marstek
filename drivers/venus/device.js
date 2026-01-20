@@ -8,6 +8,9 @@ class VenusBatteryDevice extends Homey.Device {
   async onInit() {
     this.log('VenusBattery Device has been initialized');
 
+    // Track if device is being deleted to prevent operations on deleted device
+    this._isDeleted = false;
+
     // Get device settings
     this.settings = this.getSettings();
 
@@ -86,6 +89,16 @@ class VenusBatteryDevice extends Homey.Device {
     // Restart polling if connection settings changed
     if (changedKeys.includes('ip') || changedKeys.includes('port') || changedKeys.includes('poll_interval')) {
       this.restartPolling();
+    }
+
+    // Handle charging cutoff SOC change
+    if (changedKeys.includes('charging_cutoff_soc')) {
+      await this.setChargingCutoffSoc(newSettings.charging_cutoff_soc);
+    }
+
+    // Handle discharging cutoff SOC change
+    if (changedKeys.includes('discharging_cutoff_soc')) {
+      await this.setDischargingCutoffSoc(newSettings.discharging_cutoff_soc);
     }
   }
 
@@ -281,6 +294,20 @@ async writeDeviceName(name, config) {
       const force_discharge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcedischarge));
       console.log('current discharge power forced setting :'+force_discharge);
       this.setCapabilityValue('force_discharge_power', force_discharge).catch(this.error);
+
+      // Read charging cutoff SOC (register 44000) - range [40,100%], resolution 0.1%
+      const reg_charging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44000, 1);
+      const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
+      const charging_cutoff_soc = charging_cutoff_raw * 0.1;
+      console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
+      this.setSettings({ 'charging_cutoff_soc': charging_cutoff_soc });
+
+      // Read discharging cutoff SOC (register 44001) - range [12,30%], resolution 0.1%
+      const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
+      const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
+      const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
+      console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
+      this.setSettings({ 'discharging_cutoff_soc': discharging_cutoff_soc });
     } catch (error) {
       this.log('Device static info error:', error);
       this.setUnavailable(`Retrieval of static info failed: ${error.message}`);
@@ -288,11 +315,16 @@ async writeDeviceName(name, config) {
   }
 
   async pollData() {
+    // Check if device has been deleted - don't poll if so
+    if (this._isDeleted) {
+      return;
+    }
+
     if (!await this.connectModbus()) {
       this.consecutiveErrors++;
       this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
 
-      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this.setUnavailable(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
       }
       return;
@@ -318,7 +350,7 @@ async writeDeviceName(name, config) {
 
       // Successful poll - reset error counter and ensure device is marked available
       this.consecutiveErrors = 0;
-      if (!this.getAvailable()) {
+      if (!this._isDeleted && !this.getAvailable()) {
         this.setAvailable();
       }
 
@@ -327,7 +359,7 @@ async writeDeviceName(name, config) {
       this.log(`Polling error (${this.consecutiveErrors}/${this.maxConsecutiveErrors}):`, error.message);
 
       // Only mark unavailable after multiple consecutive failures
-      if (this.consecutiveErrors >= this.maxConsecutiveErrors) {
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this.setUnavailable(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
       }
     }
@@ -1043,6 +1075,8 @@ async writeDeviceName(name, config) {
 
   async onDeleted() {
     this.log('VenusBatteryDevice deleted');
+    // Set flag immediately to prevent any pending poll operations
+    this._isDeleted = true;
     this.stopPolling();
     this.disconnectModbus();
   }
@@ -1201,6 +1235,44 @@ async writeDeviceName(name, config) {
     }
   }
 
+  /**
+   * Check if charging cutoff SOC is above threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.percentage - SOC threshold in percentage
+   * @returns {boolean} - True if current setting is above threshold
+   */
+  async conditionChargingCutoffSocAbove(args) {
+    try {
+      const currentSoc = this.getSetting('charging_cutoff_soc') || 100;
+      const threshold = Number(args.percentage);
+
+      this.log(`Checking charging cutoff SOC: current=${currentSoc}%, threshold=${threshold}%`);
+      return currentSoc > threshold;
+    } catch (error) {
+      this.error('Error checking charging cutoff SOC condition:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if discharging cutoff SOC is above threshold
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.percentage - SOC threshold in percentage
+   * @returns {boolean} - True if current setting is above threshold
+   */
+  async conditionDischargingCutoffSocAbove(args) {
+    try {
+      const currentSoc = this.getSetting('discharging_cutoff_soc') || 15;
+      const threshold = Number(args.percentage);
+
+      this.log(`Checking discharging cutoff SOC: current=${currentSoc}%, threshold=${threshold}%`);
+      return currentSoc > threshold;
+    } catch (error) {
+      this.error('Error checking discharging cutoff SOC condition:', error);
+      return false;
+    }
+  }
+
   // ============================================
   // ACTION METHODS
   // ============================================
@@ -1332,6 +1404,114 @@ async writeDeviceName(name, config) {
       return true;
     } catch (error) {
       this.error('Error setting force charge target:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set charging cutoff SOC via flow action
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.percentage - SOC percentage (40-100)
+   * @returns {boolean} - Success status
+   */
+  async actionSetChargingCutoffSoc(args) {
+    try {
+      const percentage = Number(args.percentage);
+
+      // Validate range
+      if (percentage < 40 || percentage > 100) {
+        throw new Error(`Invalid charging cutoff SOC: ${percentage}%. Must be between 40-100%`);
+      }
+
+      this.log(`Setting charging cutoff SOC to: ${percentage}%`);
+      await this.setChargingCutoffSoc(percentage);
+
+      // Update the setting value
+      await this.setSettings({ 'charging_cutoff_soc': percentage });
+
+      return true;
+    } catch (error) {
+      this.error('Error setting charging cutoff SOC:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Set discharging cutoff SOC via flow action
+   * @param {Object} args - Flow card arguments
+   * @param {number} args.percentage - SOC percentage (12-30)
+   * @returns {boolean} - Success status
+   */
+  async actionSetDischargingCutoffSoc(args) {
+    try {
+      const percentage = Number(args.percentage);
+
+      // Validate range
+      if (percentage < 12 || percentage > 30) {
+        throw new Error(`Invalid discharging cutoff SOC: ${percentage}%. Must be between 12-30%`);
+      }
+
+      this.log(`Setting discharging cutoff SOC to: ${percentage}%`);
+      await this.setDischargingCutoffSoc(percentage);
+
+      // Update the setting value
+      await this.setSettings({ 'discharging_cutoff_soc': percentage });
+
+      return true;
+    } catch (error) {
+      this.error('Error setting discharging cutoff SOC:', error);
+      throw error;
+    }
+  }
+
+  // ============================================
+  // MODBUS WRITE METHODS FOR CUTOFF SOC
+  // ============================================
+
+  /**
+   * Write charging cutoff SOC to Modbus register 44000
+   * @param {number} percentage - SOC percentage (40-100)
+   */
+  async setChargingCutoffSoc(percentage) {
+    try {
+      if (!await this.connectModbus()) {
+        throw new Error('Modbus connection failed');
+      }
+
+      const slaveId = this.settings.slave_id || 1;
+      // Register 44000 uses 0.1% resolution, so multiply by 10
+      const registerValue = Math.round(percentage * 10);
+
+      this.log(`Writing charging cutoff SOC: ${percentage}% (register value: ${registerValue}) to register 44000`);
+      await this.modbus.writeSingleRegister(slaveId, 44000, registerValue);
+
+      this.log('Charging cutoff SOC written successfully');
+    } catch (error) {
+      this.error('Error writing charging cutoff SOC to Modbus:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Write discharging cutoff SOC to Modbus register 44001
+   * @param {number} percentage - SOC percentage (12-30)
+   */
+  async setDischargingCutoffSoc(percentage) {
+    try {
+      if (!await this.connectModbus()) {
+        throw new Error('Modbus connection failed');
+      }
+
+      const slaveId = this.settings.slave_id || 1;
+      // Register 44001 uses 0.1% resolution, so multiply by 10
+      const registerValue = Math.round(percentage * 10);
+
+      this.log(`Writing discharging cutoff SOC: ${percentage}% (register value: ${registerValue}) to register 44001`);
+      await this.modbus.writeSingleRegister(slaveId, 44001, registerValue);
+
+      this.log('Discharging cutoff SOC written successfully');
+    } catch (error) {
+      this.error('Error writing discharging cutoff SOC to Modbus:', error);
       throw error;
     }
   }

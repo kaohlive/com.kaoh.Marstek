@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marstek Register Test</title>
+  <script type="text/javascript" src="/homey.js" data-origin="settings"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 16px;
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin-bottom: 16px;
+      color: #1d8296;
+    }
+
+    h2 {
+      font-size: 16px;
+      margin: 24px 0 12px 0;
+      color: #555;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 8px;
+    }
+
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    label {
+      display: block;
+      font-weight: 500;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+      margin-bottom: 12px;
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: #1d8296;
+    }
+
+    button {
+      background: #1d8296;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+
+    button:hover {
+      background: #176a7a;
+    }
+
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    button.secondary {
+      background: #666;
+    }
+
+    button.secondary:hover {
+      background: #555;
+    }
+
+    button.danger {
+      background: #d9534f;
+    }
+
+    button.danger:hover {
+      background: #c9302c;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .row > div {
+      flex: 1;
+    }
+
+    .row > div.small {
+      flex: 0.5;
+    }
+
+    textarea {
+      width: 100%;
+      height: 200px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 12px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+
+    .status.success {
+      background: #dff0d8;
+      color: #3c763d;
+      border: 1px solid #d6e9c6;
+    }
+
+    .status.error {
+      background: #f2dede;
+      color: #a94442;
+      border: 1px solid #ebccd1;
+    }
+
+    .status.info {
+      background: #d9edf7;
+      color: #31708f;
+      border: 1px solid #bce8f1;
+    }
+
+    .result-value {
+      font-family: monospace;
+      background: #f8f8f8;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      margin-top: 8px;
+      word-break: break-all;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #888;
+      margin-top: -8px;
+      margin-bottom: 12px;
+    }
+
+    .warning {
+      background: #fcf8e3;
+      border: 1px solid #faebcc;
+      color: #8a6d3b;
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+
+    #deviceSelect option:disabled {
+      color: #999;
+    }
+
+    .copy-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    .register-result {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Marstek Modbus Register Test</h1>
+
+    <div class="warning">
+      ⚠️ This is a debugging tool for advanced users. Writing to unknown registers may cause unexpected behavior.
+    </div>
+
+    <!-- Device Selection -->
+    <div class="section">
+      <h2>1. Select Device</h2>
+      <label for="deviceSelect">Venus Battery Device</label>
+      <select id="deviceSelect">
+        <option value="" disabled selected>Loading devices...</option>
+      </select>
+      <div id="deviceInfo" class="help-text"></div>
+    </div>
+
+    <!-- Manual Register Read/Write -->
+    <div class="section">
+      <h2>2. Manual Register Access</h2>
+
+      <div class="row">
+        <div>
+          <label for="registerAddress">Register Address</label>
+          <input type="number" id="registerAddress" placeholder="e.g. 43000" min="0" max="65535">
+        </div>
+        <div class="small">
+          <label for="registerCount">Count</label>
+          <input type="number" id="registerCount" value="1" min="1" max="10">
+        </div>
+      </div>
+      <p class="help-text">Enter a decimal register address (e.g., 43000 for User Work Mode)</p>
+
+      <button id="readRegisterBtn" disabled>Read Register</button>
+
+      <div id="readResult"></div>
+
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;">
+
+      <div class="row">
+        <div>
+          <label for="writeValue">Value to Write</label>
+          <input type="number" id="writeValue" placeholder="e.g. 0" min="0" max="65535">
+        </div>
+      </div>
+      <p class="help-text">Enter a decimal value to write (0-65535)</p>
+
+      <button id="writeRegisterBtn" class="danger" disabled>Write Register</button>
+
+      <div id="writeResult"></div>
+    </div>
+
+    <!-- Current State Dump -->
+    <div class="section">
+      <h2>3. Device State Dump</h2>
+      <p class="help-text">Poll all known registers and display their raw values for debugging.</p>
+
+      <button id="pollStateBtn" disabled>Poll Device State</button>
+      <button id="copyStateBtn" class="secondary" disabled>Copy to Clipboard</button>
+
+      <div style="margin-top: 16px;">
+        <label for="stateOutput">Raw Register Values (select all to copy)</label>
+        <textarea id="stateOutput" readonly placeholder="Click 'Poll Device State' to fetch current values..."></textarea>
+      </div>
+
+      <div id="pollResult"></div>
+    </div>
+
+    <!-- Common Registers Reference -->
+    <div class="section">
+      <h2>Reference: Common Registers</h2>
+      <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+        <tr style="background: #f0f0f0;">
+          <th style="text-align: left; padding: 6px;">Register</th>
+          <th style="text-align: left; padding: 6px;">Name</th>
+          <th style="text-align: left; padding: 6px;">Values</th>
+        </tr>
+        <tr><td style="padding: 6px;">31000</td><td>Device Name</td><td>20 chars</td></tr>
+        <tr><td style="padding: 6px;">31101</td><td>Firmware Version</td><td>u16</td></tr>
+        <tr><td style="padding: 6px;">32100</td><td>Battery Voltage</td><td>0.01V</td></tr>
+        <tr><td style="padding: 6px;">32101</td><td>Battery Current</td><td>0.01A (signed)</td></tr>
+        <tr><td style="padding: 6px;">32102</td><td>Battery Power</td><td>1W (signed, 2 regs)</td></tr>
+        <tr><td style="padding: 6px;">32104</td><td>Battery SOC</td><td>1%</td></tr>
+        <tr><td style="padding: 6px;">35100</td><td>Inverter State</td><td>0-6</td></tr>
+        <tr><td style="padding: 6px;">41200</td><td>Backup Function</td><td>0=enable, 1=disable</td></tr>
+        <tr><td style="padding: 6px;">42000</td><td>RS485 Control</td><td>21930=enable, 21947=disable</td></tr>
+        <tr><td style="padding: 6px;">42010</td><td>Force Mode</td><td>0=stop, 1=charge, 2=discharge</td></tr>
+        <tr><td style="padding: 6px;">42011</td><td>Charge to SOC</td><td>10-100%</td></tr>
+        <tr><td style="padding: 6px;">42020</td><td>Force Charge Power</td><td>0-2500W</td></tr>
+        <tr><td style="padding: 6px;">42021</td><td>Force Discharge Power</td><td>0-2500W</td></tr>
+        <tr><td style="padding: 6px;">43000</td><td>User Work Mode</td><td>0=manual, 1=anti-feed, 2=trade</td></tr>
+        <tr><td style="padding: 6px;">44000</td><td>Charging Cutoff SOC</td><td>40-100% (0.1% res)</td></tr>
+        <tr><td style="padding: 6px;">44001</td><td>Discharging Cutoff SOC</td><td>12-30% (0.1% res)</td></tr>
+        <tr><td style="padding: 6px;">44002</td><td>Max Charge Power</td><td>0-2500W</td></tr>
+        <tr><td style="padding: 6px;">44003</td><td>Max Discharge Power</td><td>0-2500W</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    // Homey API reference
+    let homeyApi = null;
+    let selectedDevice = null;
+
+    // Initialize when page loads
+    function onHomeyReady(Homey) {
+      homeyApi = Homey;
+      Homey.ready();
+      loadDevices();
+    }
+
+    // Load available Venus devices
+    async function loadDevices() {
+      try {
+        const result = await homeyApi.api('GET', '/devices');
+        const deviceSelect = document.getElementById('deviceSelect');
+        deviceSelect.innerHTML = '<option value="" disabled selected>Select a device...</option>';
+
+        if (result && result.devices && result.devices.length > 0) {
+          result.devices.forEach(device => {
+            const option = document.createElement('option');
+            option.value = device.id;
+            option.textContent = device.name + ' (' + device.ip + ':' + device.port + ')';
+            deviceSelect.appendChild(option);
+          });
+        } else {
+          deviceSelect.innerHTML = '<option value="" disabled>No Venus devices found</option>';
+        }
+      } catch (error) {
+        console.error('Error loading devices:', error);
+        document.getElementById('deviceSelect').innerHTML =
+          '<option value="" disabled>Error loading devices</option>';
+      }
+    }
+
+    // Device selection change
+    document.getElementById('deviceSelect').addEventListener('change', function() {
+      selectedDevice = this.value;
+      const buttons = ['readRegisterBtn', 'writeRegisterBtn', 'pollStateBtn', 'copyStateBtn'];
+      buttons.forEach(id => {
+        document.getElementById(id).disabled = !selectedDevice;
+      });
+
+      if (selectedDevice) {
+        document.getElementById('deviceInfo').textContent = 'Device ID: ' + selectedDevice;
+      }
+    });
+
+    // Read register
+    document.getElementById('readRegisterBtn').addEventListener('click', async function() {
+      const address = parseInt(document.getElementById('registerAddress').value);
+      const count = parseInt(document.getElementById('registerCount').value) || 1;
+      const resultDiv = document.getElementById('readResult');
+
+      if (isNaN(address)) {
+        resultDiv.innerHTML = '<div class="status error">Please enter a valid register address</div>';
+        return;
+      }
+
+      this.disabled = true;
+      this.textContent = 'Reading...';
+      resultDiv.innerHTML = '<div class="status info">Reading register ' + address + '...</div>';
+
+      try {
+        const result = await homeyApi.api('POST', '/readRegister', {
+          deviceId: selectedDevice,
+          address: address,
+          count: count
+        });
+
+        if (result.success) {
+          let html = '<div class="status success">Read successful</div>';
+          html += '<div class="register-result">';
+          html += '<div class="result-value">';
+          html += 'Address: ' + address + '<br>';
+          html += 'Raw: ' + JSON.stringify(result.raw) + '<br>';
+          html += 'Uint16: ' + result.uint16 + '<br>';
+          if (count > 1) {
+            html += 'Uint32: ' + result.uint32 + '<br>';
+            html += 'Int32: ' + result.int32 + '<br>';
+          }
+          html += 'Int16: ' + result.int16 + '<br>';
+          html += 'Hex: 0x' + result.hex;
+          html += '</div>';
+          html += '</div>';
+          resultDiv.innerHTML = html;
+        } else {
+          resultDiv.innerHTML = '<div class="status error">Error: ' + result.error + '</div>';
+        }
+      } catch (error) {
+        resultDiv.innerHTML = '<div class="status error">Error: ' + error.message + '</div>';
+      }
+
+      this.disabled = false;
+      this.textContent = 'Read Register';
+    });
+
+    // Write register
+    document.getElementById('writeRegisterBtn').addEventListener('click', async function() {
+      const address = parseInt(document.getElementById('registerAddress').value);
+      const value = parseInt(document.getElementById('writeValue').value);
+      const resultDiv = document.getElementById('writeResult');
+
+      if (isNaN(address) || isNaN(value)) {
+        resultDiv.innerHTML = '<div class="status error">Please enter valid address and value</div>';
+        return;
+      }
+
+      if (!confirm('Are you sure you want to write value ' + value + ' to register ' + address + '?')) {
+        return;
+      }
+
+      this.disabled = true;
+      this.textContent = 'Writing...';
+      resultDiv.innerHTML = '<div class="status info">Writing to register ' + address + '...</div>';
+
+      try {
+        const result = await homeyApi.api('POST', '/writeRegister', {
+          deviceId: selectedDevice,
+          address: address,
+          value: value
+        });
+
+        if (result.success) {
+          resultDiv.innerHTML = '<div class="status success">Write successful! Value ' + value + ' written to register ' + address + '</div>';
+        } else {
+          resultDiv.innerHTML = '<div class="status error">Error: ' + result.error + '</div>';
+        }
+      } catch (error) {
+        resultDiv.innerHTML = '<div class="status error">Error: ' + error.message + '</div>';
+      }
+
+      this.disabled = false;
+      this.textContent = 'Write Register';
+    });
+
+    // Poll device state
+    document.getElementById('pollStateBtn').addEventListener('click', async function() {
+      const resultDiv = document.getElementById('pollResult');
+      const outputArea = document.getElementById('stateOutput');
+
+      this.disabled = true;
+      this.textContent = 'Polling...';
+      resultDiv.innerHTML = '<div class="status info">Polling device state...</div>';
+      outputArea.value = 'Loading...';
+
+      try {
+        const result = await homeyApi.api('POST', '/pollState', {
+          deviceId: selectedDevice
+        });
+
+        if (result.success) {
+          // Format the output nicely
+          let output = '=== Marstek Device State Dump ===\n';
+          output += 'Timestamp: ' + new Date().toISOString() + '\n';
+          output += 'Device ID: ' + selectedDevice + '\n\n';
+
+          for (const category of Object.keys(result.data)) {
+            output += '--- ' + category.toUpperCase() + ' ---\n';
+            for (const [key, value] of Object.entries(result.data[category])) {
+              output += key + ': ' + JSON.stringify(value) + '\n';
+            }
+            output += '\n';
+          }
+
+          outputArea.value = output;
+          resultDiv.innerHTML = '<div class="status success">State poll completed</div>';
+          document.getElementById('copyStateBtn').disabled = false;
+        } else {
+          outputArea.value = 'Error: ' + result.error;
+          resultDiv.innerHTML = '<div class="status error">Error: ' + result.error + '</div>';
+        }
+      } catch (error) {
+        outputArea.value = 'Error: ' + error.message;
+        resultDiv.innerHTML = '<div class="status error">Error: ' + error.message + '</div>';
+      }
+
+      this.disabled = false;
+      this.textContent = 'Poll Device State';
+    });
+
+    // Copy state to clipboard
+    document.getElementById('copyStateBtn').addEventListener('click', function() {
+      const outputArea = document.getElementById('stateOutput');
+      outputArea.select();
+      document.execCommand('copy');
+
+      const originalText = this.textContent;
+      this.textContent = 'Copied!';
+      setTimeout(() => {
+        this.textContent = originalText;
+      }, 2000);
+    });
+  </script>
+</body>
+</html>

@@ -276,6 +276,47 @@
         "value": "unknown"
       }
     ]
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Battery Protection Settings",
+      "nl": "Batterij Bescherming Instellingen"
+    },
+    "children": [
+      {
+        "id": "charging_cutoff_soc",
+        "type": "number",
+        "label": {
+          "en": "Charging Cutoff SOC (%)",
+          "nl": "Laad Afkap SOC (%)"
+        },
+        "hint": {
+          "en": "SOC level at which charging stops (40-100%)",
+          "nl": "SOC niveau waarbij laden stopt (40-100%)"
+        },
+        "value": 100,
+        "min": 40,
+        "max": 100,
+        "units": "%"
+      },
+      {
+        "id": "discharging_cutoff_soc",
+        "type": "number",
+        "label": {
+          "en": "Discharging Cutoff SOC (%)",
+          "nl": "Ontlaad Afkap SOC (%)"
+        },
+        "hint": {
+          "en": "SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+          "nl": "SOC reserve niveau waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+        },
+        "value": 15,
+        "min": 12,
+        "max": 30,
+        "units": "%"
+      }
+    ]
   }
   ]
 }

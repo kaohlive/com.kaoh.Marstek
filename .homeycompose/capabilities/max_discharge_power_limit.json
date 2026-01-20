@@ -13,6 +13,7 @@
     "nl": "W"
   },
   "min": 0,
+  "deprecated": true,
   "max": 2500,
   "decimals": 0,
   "insights": true,
