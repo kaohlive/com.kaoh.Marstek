@@ -295,14 +295,14 @@ async writeDeviceName(name, config) {
       console.log('current discharge power forced setting :'+force_discharge);
       this.setCapabilityValue('force_discharge_power', force_discharge).catch(this.error);
 
-      // Read charging cutoff SOC (register 44000) - range [40,100%], resolution 0.1%
+      // Read charging cutoff SOC (register 44000) - resolution 0.1%
       const reg_charging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44000, 1);
       const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
       const charging_cutoff_soc = charging_cutoff_raw * 0.1;
       console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
       this.setSettings({ 'charging_cutoff_soc': charging_cutoff_soc });
 
-      // Read discharging cutoff SOC (register 44001) - range [12,30%], resolution 0.1%
+      // Read discharging cutoff SOC (register 44001) - resolution 0.1%
       const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
       const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
       const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
@@ -1470,7 +1470,7 @@ async writeDeviceName(name, config) {
 
   /**
    * Write charging cutoff SOC to Modbus register 44000
-   * @param {number} percentage - SOC percentage (40-100)
+   * @param {number} percentage - SOC percentage (will be clamped to 40-100)
    */
   async setChargingCutoffSoc(percentage) {
     try {
@@ -1478,11 +1478,19 @@ async writeDeviceName(name, config) {
         throw new Error('Modbus connection failed');
       }
 
+      // Clamp to valid write range (40-100%)
+      const clampedPercentage = Math.min(100, Math.max(40, percentage));
+      if (clampedPercentage !== percentage) {
+        this.log(`Charging cutoff SOC ${percentage}% clamped to ${clampedPercentage}%`);
+      }
+
       const slaveId = this.settings.slave_id || 1;
       // Register 44000 uses 0.1% resolution, so multiply by 10
-      const registerValue = Math.round(percentage * 10);
+      const registerValue = Math.round(clampedPercentage * 10);
 
-      this.log(`Writing charging cutoff SOC: ${percentage}% (register value: ${registerValue}) to register 44000`);
+      this.log(`Writing charging cutoff SOC: ${clampedPercentage}% (register value: ${registerValue}) to register 44000`);
+      // Enable RS485 control before writing to register
+      await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
       await this.modbus.writeSingleRegister(slaveId, 44000, registerValue);
 
       this.log('Charging cutoff SOC written successfully');
@@ -1494,7 +1502,7 @@ async writeDeviceName(name, config) {
 
   /**
    * Write discharging cutoff SOC to Modbus register 44001
-   * @param {number} percentage - SOC percentage (12-30)
+   * @param {number} percentage - SOC percentage (will be clamped to 12-30)
    */
   async setDischargingCutoffSoc(percentage) {
     try {
@@ -1502,11 +1510,19 @@ async writeDeviceName(name, config) {
         throw new Error('Modbus connection failed');
       }
 
+      // Clamp to valid write range (12-30%)
+      const clampedPercentage = Math.min(30, Math.max(12, percentage));
+      if (clampedPercentage !== percentage) {
+        this.log(`Discharging cutoff SOC ${percentage}% clamped to ${clampedPercentage}%`);
+      }
+
       const slaveId = this.settings.slave_id || 1;
       // Register 44001 uses 0.1% resolution, so multiply by 10
-      const registerValue = Math.round(percentage * 10);
+      const registerValue = Math.round(clampedPercentage * 10);
 
-      this.log(`Writing discharging cutoff SOC: ${percentage}% (register value: ${registerValue}) to register 44001`);
+      this.log(`Writing discharging cutoff SOC: ${clampedPercentage}% (register value: ${registerValue}) to register 44001`);
+      // Enable RS485 control before writing to register
+      await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
       await this.modbus.writeSingleRegister(slaveId, 44001, registerValue);
 
       this.log('Discharging cutoff SOC written successfully');

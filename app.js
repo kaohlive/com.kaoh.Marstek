@@ -11,6 +11,21 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   async onInit() {
     this.log('MyMarstekBatteryApp has been initialized');
 
+    // Handle uncaught exceptions from modbus-stream library
+    // These can occur when the device sends malformed/truncated responses
+    process.on('uncaughtException', (error) => {
+      if (error.code === 'ERR_BUFFER_OUT_OF_BOUNDS' ||
+          error.name === 'RangeError' ||
+          (error.message && error.message.includes('buffer'))) {
+        this.log('Caught uncaught buffer exception from Modbus transport - this is expected when device sends malformed data');
+        // Don't crash - the ModbusClient will handle reconnection
+      } else {
+        // Re-throw other uncaught exceptions
+        this.error('Uncaught exception:', error);
+        throw error;
+      }
+    });
+
     // Create a dedicated Modbus client for testing
     this.testModbus = new ModbusClient();
   }

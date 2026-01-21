@@ -292,11 +292,11 @@
           "nl": "Laad Afkap SOC (%)"
         },
         "hint": {
-          "en": "SOC level at which charging stops (40-100%)",
-          "nl": "SOC niveau waarbij laden stopt (40-100%)"
+          "en": "SOC level at which charging stops. Recommended range: 40-100%",
+          "nl": "SOC niveau waarbij laden stopt. Aanbevolen bereik: 40-100%"
         },
         "value": 100,
-        "min": 40,
+        "min": 0,
         "max": 100,
         "units": "%"
       },
@@ -308,12 +308,12 @@
           "nl": "Ontlaad Afkap SOC (%)"
         },
         "hint": {
-          "en": "SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
-          "nl": "SOC reserve niveau waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+          "en": "SOC reserve level below which discharging stops. Recommended range: 12-30%. WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+          "nl": "SOC reserve niveau waaronder ontladen stopt. Aanbevolen bereik: 12-30%. WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
         },
         "value": 15,
-        "min": 12,
-        "max": 30,
+        "min": 0,
+        "max": 100,
         "units": "%"
       }
     ]
