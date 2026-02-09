@@ -55,5 +55,8 @@
   },
   "1.1.5": {
     "en": "stability improvements"
+  },
+  "1.1.6": {
+    "en": "Fix on force soc control ui"
   }
 }
