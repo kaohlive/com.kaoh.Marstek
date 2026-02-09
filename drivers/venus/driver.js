@@ -16,7 +16,7 @@ class VenusBatteryDriver extends Homey.Driver {
   FORCE_MODES = {
     0: 'none',
     1: 'force_charge',
-    2: 'force_discharge'     
+    2: 'force_discharge'
   };
   WORK_MODES = {
     0: 'manual',

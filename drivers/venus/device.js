@@ -498,8 +498,12 @@ async writeDeviceName(name, config) {
       console.log('current charge mode forced :'+force_mode);
 
       // Only set capability if value changed to prevent unnecessary triggers
+      // Preserve force_soc mode: register 42010 reads 0 (none) when force_soc is active
+      // because force_soc is managed via register 42011, not 42010
       const currentForceMode = this.getCapabilityValue('force_charge_mode');
-      if (currentForceMode !== forceModeStr) {
+      if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
+        // Don't overwrite - force_soc is active via SOC target register
+      } else if (currentForceMode !== forceModeStr) {
         this.setCapabilityValue('force_charge_mode', forceModeStr).catch(this.error);
       }
       //Work mode
@@ -914,12 +918,20 @@ async writeDeviceName(name, config) {
       }
 
       const slaveId = this.settings.slave_id || 1;
-      const modeValue = Object.keys(this.driver.FORCE_MODES).find(
-        key => this.driver.FORCE_MODES[key] === value
-      );
-      console.log('Attempt tp set mode to '+modeValue+' based on '+value);
-      //We expect the work mode to be on force_control, else this is ignored
-      await this.modbus.writeSingleRegister(slaveId, 42010, modeValue);
+
+      // force_soc is a Homey-only mode - on hardware it is triggered by setting a SOC target on register 42011
+      if (value === 'force_soc') {
+        this.log('Force SOC mode selected - writing current SOC target to register 42011');
+        const currentTarget = this.getCapabilityValue('force_charge_target') || 25;
+        await this.modbus.writeSingleRegister(slaveId, 42011, currentTarget);
+      } else {
+        const modeValue = Object.keys(this.driver.FORCE_MODES).find(
+          key => this.driver.FORCE_MODES[key] === value
+        );
+        console.log('Attempt to set mode to '+modeValue+' based on '+value);
+        //We expect the work mode to be on force_control, else this is ignored
+        await this.modbus.writeSingleRegister(slaveId, 42010, parseInt(modeValue));
+      }
       this.log('Charge mode set to:', value);
 
       // Apply configurable delay to allow battery to accept new state

@@ -2,11 +2,11 @@
   "type": "enum",
   "title": {
     "en": "Work Mode",
-    "nl": "Optimalizatie modus"
+    "nl": "Operatie modus"
   },
   "desc": {
     "en": "Work mode selection",
-    "nl": "Optimalizatie modus selectie"
+    "nl": "Operatie modus selectie"
   },
   "values": [
     {
@@ -34,7 +34,7 @@
       "id": "control_mode",
       "title": {
         "en": "Use force controls",
-        "nl": "Gebruik forceer laadmodus"
+        "nl": "Gebruik forceer modus"
       }
     }
   ],
