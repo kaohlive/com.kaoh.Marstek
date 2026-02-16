@@ -58,5 +58,8 @@
   },
   "1.1.6": {
     "en": "Fix on force soc control ui"
+  },
+  "1.1.7": {
+    "en": "Added ip and slave id config in add wizard"
   }
 }
