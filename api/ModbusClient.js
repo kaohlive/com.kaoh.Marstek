@@ -236,13 +236,13 @@ class ModbusClient extends EventEmitter {
       try {
         const result = await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
-            reject(new Error('Read operation timeout'));
+            reject(new Error(`Read holding registers timeout (slave=${slaveId}, addr=${address}, qty=${quantity})`));
           }, this.connectionTimeout);
 
           this.connection.readHoldingRegisters({
-            unitId: slaveId || 1,
             address,
-            quantity
+            quantity,
+            extra: { unitId: slaveId || 1 }
           }, (err, info) => {
             clearTimeout(timeout);
 
@@ -295,13 +295,13 @@ class ModbusClient extends EventEmitter {
       try {
         const result = await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => {
-            reject(new Error('Write operation timeout'));
+            reject(new Error(`Write register timeout (slave=${slaveId}, addr=${address})`));
           }, this.connectionTimeout);
 
           this.connection.writeSingleRegister({
-            unitId: slaveId || 1,
             address,
-            value: bufferValue
+            value: bufferValue,
+            extra: { unitId: slaveId || 1 }
           }, (err, info) => {
             clearTimeout(timeout);
 
@@ -348,13 +348,13 @@ class ModbusClient extends EventEmitter {
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        reject(new Error('Write operation timeout'));
+        reject(new Error(`Write multiple registers timeout (slave=${slaveId}, addr=${address})`));
       }, this.connectionTimeout);
 
-      this.connection.writeMultipleRegisters({ 
-        unitId: slaveId || 1,
-        address, 
-        values 
+      this.connection.writeMultipleRegisters({
+        address,
+        values,
+        extra: { unitId: slaveId || 1 }
       }, (err, info) => {
         clearTimeout(timeout);
         

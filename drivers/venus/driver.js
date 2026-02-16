@@ -1,6 +1,7 @@
 'use strict';
 
 const Homey = require('homey');
+const ModbusClient = require('../../api/ModbusClient');
 
 class VenusBatteryDriver extends Homey.Driver {
 
@@ -202,21 +203,29 @@ registerFlowCardActions() {
     });
 }
 
-  async onPairListDevices() {
-    return [
-      {
-        name: 'Venus Battery System',
-        data: {
-          id: 'venus_battery_' + Math.random().toString(36).substr(2, 9)
-        },
-        settings: {
-          ip: '192.168.1.100',
-          port: 502,
-          slave_id: 1,
-          poll_interval: 5000
+  async onPair(session) {
+    session.setHandler('test_connection', async (data) => {
+      this.log(`Testing connection to ${data.ip}:${data.port} (slave ${data.slave_id})`);
+
+      const client = new ModbusClient();
+      try {
+        const connected = await client.connect({ ip: data.ip, port: data.port });
+        if (!connected) {
+          return { success: false, message: 'Could not connect to device' };
         }
+
+        // Try reading the device name register to verify the Marstek battery responds
+        await client.readHoldingRegisters(data.slave_id, 31000, 1);
+        client.disconnect();
+
+        this.log('Connection test successful');
+        return { success: true };
+      } catch (err) {
+        this.log('Connection test failed:', err.message);
+        client.disconnect();
+        return { success: false, message: err.message };
       }
-    ];
+    });
   }
 
 }
