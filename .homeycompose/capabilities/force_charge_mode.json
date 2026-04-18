@@ -36,8 +36,16 @@
         "en": "Force to SOC target",
         "nl": "Forceer tot SOC doel"
       }
+    },
+    {
+      "id": "target_power",
+      "title": {
+        "en": "Homey target power",
+        "nl": "Homey doelvermogen"
+      }
     }
   ],
+  "deprecated": true,
   "getable": true,
   "setable": true,
   "uiComponent": "picker"

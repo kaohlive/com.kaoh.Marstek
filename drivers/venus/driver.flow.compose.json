@@ -355,6 +355,7 @@
     },
     {
       "id": "force_charge_mode_changed",
+      "deprecated": true,
       "title": {
         "en": "Force charge mode changed",
         "nl": "Gedwongen laadmodus is veranderd"
@@ -507,6 +508,7 @@
     },
     {
       "id": "user_work_mode_changed",
+      "deprecated": true,
       "title": {
         "en": "Work mode changed",
         "nl": "Optimalizatie modus is veranderd"
@@ -729,6 +731,7 @@
     },
     {
       "id": "force_charge_mode_is",
+      "deprecated": true,
       "title": {
         "en": "Force charge mode is",
         "nl": "Gedwongen laadmodus is"
@@ -853,6 +856,7 @@
     },
     {
       "id": "user_work_mode_is",
+      "deprecated": true,
       "title": {
         "en": "Work mode is",
         "nl": "Optimalizatie modus is"
@@ -1297,6 +1301,7 @@
     },
     {
       "id": "set_force_charge_mode",
+      "deprecated": true,
       "title": {
         "en": "Set force charge mode",
         "nl": "Gedwongen laadmodus instellen"
@@ -1352,6 +1357,7 @@
     },
     {
       "id": "set_user_work_mode",
+      "deprecated": true,
       "title": {
         "en": "Set work mode",
         "nl": "Optimalizatie modus instellen"
@@ -1407,6 +1413,7 @@
     },
     {
       "id": "set_force_charge_power",
+      "deprecated": true,
       "title": {
         "en": "Set force charge power",
         "nl": "Gedwongen laad vermogen instellen"
@@ -1435,6 +1442,7 @@
     },
     {
       "id": "set_force_discharge_power",
+      "deprecated": true,
       "title": {
         "en": "Set force discharge power",
         "nl": "Gedwongen ontlaad vermogen instellen"

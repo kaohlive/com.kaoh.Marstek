@@ -65,6 +65,21 @@ class VenusBatteryDevice extends Homey.Device {
       this.log('Registered missing max_discharge_power_limit capability');
       neededFix = true;
     }
+    if(!this.hasCapability('target_power')) {
+      await this.addCapability('target_power');
+      this.log('Registered missing target_power capability');
+      neededFix = true;
+    }
+    if(!this.hasCapability('target_power_mode')) {
+      await this.addCapability('target_power_mode');
+      this.log('Registered missing target_power_mode capability');
+      neededFix = true;
+    }
+    if(!this.hasCapability('onoff')) {
+      await this.addCapability('onoff');
+      this.log('Registered missing onoff capability');
+      neededFix = true;
+    }
     return neededFix;
   }
 
@@ -499,12 +514,18 @@ async writeDeviceName(name, config) {
 
       // Only set capability if value changed to prevent unnecessary triggers
       // Preserve force_soc mode: register 42010 reads 0 (none) when force_soc is active
-      // because force_soc is managed via register 42011, not 42010
+      // because force_soc is managed via register 42011, not 42010.
+      // Preserve target_power mode: when the user drives via target_power the register
+      // reads force_charge/force_discharge, but we want the unified label to stick.
       const currentForceMode = this.getCapabilityValue('force_charge_mode');
+      let displayForceMode = forceModeStr;
+      if (currentForceMode === 'target_power' && (forceModeStr === 'force_charge' || forceModeStr === 'force_discharge')) {
+        displayForceMode = 'target_power';
+      }
       if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
         // Don't overwrite - force_soc is active via SOC target register
-      } else if (currentForceMode !== forceModeStr) {
-        this.setCapabilityValue('force_charge_mode', forceModeStr).catch(this.error);
+      } else if (currentForceMode !== displayForceMode) {
+        this.setCapabilityValue('force_charge_mode', displayForceMode).catch(this.error);
       }
       //Work mode
       const reg_work_mode = await this.modbus.readHoldingRegisters(slaveId, 43000, 1);
@@ -566,6 +587,64 @@ async writeDeviceName(name, config) {
       const currentMaxDischargePower = this.getCapabilityValue('max_discharge_power_limit');
       if (currentMaxDischargePower !== max_discharge_power) {
         this.setCapabilityValue('max_discharge_power_limit', max_discharge_power).catch(this.error);
+      }
+
+      // Sync target_power slider range to the device's current max charge/discharge
+      // limits. Homey requires min<=0<=max, so guard against zeroed readings during
+      // startup by falling back to the hardware ceiling (2500W).
+      const targetMax = max_charge_power > 0 ? max_charge_power : 2500;
+      const targetMin = -(max_discharge_power > 0 ? max_discharge_power : 2500);
+      if (this._targetPowerMax !== targetMax || this._targetPowerMin !== targetMin) {
+        try {
+          await this.setCapabilityOptions('target_power', {
+            min: targetMin,
+            max: targetMax,
+            step: 5,
+          });
+          this._targetPowerMin = targetMin;
+          this._targetPowerMax = targetMax;
+          this.log(`target_power range updated to [${targetMin}, ${targetMax}] W`);
+        } catch (err) {
+          this.log('Failed to update target_power range:', err.message);
+        }
+      }
+
+      // Derive target_power from the force registers so Homey's standard
+      // energy view reflects the requested setpoint (not the measured power,
+      // which may differ due to SOC cutoffs or thermal limiting).
+      let derivedTargetPower = 0;
+      if (forceModeStr === 'force_charge') {
+        derivedTargetPower = this.getCapabilityValue('force_charge_power') || 0;
+      } else if (forceModeStr === 'force_discharge') {
+        derivedTargetPower = -(this.getCapabilityValue('force_discharge_power') || 0);
+      }
+      const currentTargetPower = this.getCapabilityValue('target_power');
+      if (currentTargetPower !== derivedTargetPower) {
+        this.setCapabilityValue('target_power', derivedTargetPower).catch(this.error);
+      }
+
+      // target_power_mode mirrors user_work_mode 1:1, with control_mode → homey.
+      const derivedTargetMode = (workModeStr === 'control_mode') ? 'homey' : workModeStr;
+      const currentTargetMode = this.getCapabilityValue('target_power_mode');
+      if (derivedTargetMode && currentTargetMode !== derivedTargetMode) {
+        this.setCapabilityValue('target_power_mode', derivedTargetMode).catch(this.error);
+      }
+
+      // onoff is "off" only when Homey is in full control AND target_power is 0.
+      // Any other combination means the battery is actively doing work.
+      const derivedOnOff = !(derivedTargetMode === 'homey' && derivedTargetPower === 0);
+      const currentOnOff = this.getCapabilityValue('onoff');
+      if (currentOnOff !== derivedOnOff) {
+        this.setCapabilityValue('onoff', derivedOnOff).catch(this.error);
+      }
+      if (derivedOnOff) {
+        const activeMode = derivedTargetMode || 'anti_feed';
+        if (this.getStoreValue('lastActiveMode') !== activeMode) {
+          this.setStoreValue('lastActiveMode', activeMode).catch(this.error);
+        }
+        if (activeMode === 'homey' && derivedTargetPower !== 0) {
+          this.setStoreValue('lastActivePower', derivedTargetPower).catch(this.error);
+        }
       }
 
     } catch (error) {
@@ -911,10 +990,14 @@ async writeDeviceName(name, config) {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
-      try {
-        await this.validateControlRequirement();
-      } catch (error) {
-        throw error;
+
+      // Any force_* mode implies homey-driven control: auto-flip instead of
+      // refusing the request when the battery is still in an autonomous mode.
+      const wantsHomeyControl = value === 'force_charge' || value === 'force_discharge'
+        || value === 'force_soc' || value === 'target_power';
+      if (wantsHomeyControl && this.getCapabilityValue('target_power_mode') !== 'homey') {
+        this.log(`force_charge_mode=${value} requested while not in homey mode - switching`);
+        await this.onCapabilityTargetPowerMode('homey');
       }
 
       const slaveId = this.settings.slave_id || 1;
@@ -924,6 +1007,12 @@ async writeDeviceName(name, config) {
         this.log('Force SOC mode selected - writing current SOC target to register 42011');
         const currentTarget = this.getCapabilityValue('force_charge_target') || 25;
         await this.modbus.writeSingleRegister(slaveId, 42011, currentTarget);
+      } else if (value === 'target_power') {
+        // target_power is also a Homey-only umbrella label: re-apply the current
+        // target_power setpoint so the hardware registers match the picker state.
+        const currentTargetPower = this.getCapabilityValue('target_power') || 0;
+        this.log(`target_power mode selected via picker - re-applying ${currentTargetPower}W`);
+        await this.onCapabilityTargetPower(currentTargetPower, { fromCloudSync: true });
       } else {
         const modeValue = Object.keys(this.driver.FORCE_MODES).find(
           key => this.driver.FORCE_MODES[key] === value
@@ -962,10 +1051,19 @@ async writeDeviceName(name, config) {
   //If the force control mode is selected it will turn on modbus control to allow the charge value to lead the bahavior
   async onCapabilityUserWorkMode(value, opts = {}) {
     try {
+      // Guard against spurious refresh-writes from the mobile/desktop Homey app,
+      // which sometimes re-emits a cached capability value when the user just
+      // opens the device view. Without this check, such a refresh would flip
+      // 42000 back to 21947 and drop us out of control_mode.
+      if (this.getCapabilityValue('user_work_mode') === value) {
+        this.log(`user_work_mode already ${value}, skipping redundant write`);
+        return;
+      }
+
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
-      
+
       const slaveId = this.settings.slave_id || 1;
       const userWorkValue = Object.keys(this.driver.WORK_MODES).find(
         key => this.driver.WORK_MODES[key] === value
@@ -991,6 +1089,10 @@ async writeDeviceName(name, config) {
       // Update the capability value to log the change in insights/timeline
       await this.setCapabilityValue('user_work_mode', value);
 
+      // Keep target_power_mode in sync with the picker without waiting for the next poll.
+      const mirrored = (value === 'control_mode') ? 'homey' : value;
+      await this.setCapabilityValue('target_power_mode', mirrored).catch(this.error);
+
       if (this.userWorkModeChangedTrigger && !opts.fromCloudSync) {
         await this.userWorkModeChangedTrigger.trigger(this,
           { mode: value },
@@ -1004,16 +1106,181 @@ async writeDeviceName(name, config) {
     }
   }
 
+  // Master on/off switch. OFF forces the battery to idle under Homey control
+  // (target_power_mode=homey, target_power=0). ON restores the last active
+  // non-idle mode (stored in device-store) or falls back to anti_feed.
+  async onCapabilityOnoff(value, opts = {}) {
+    try {
+      if (this.getCapabilityValue('onoff') === value) {
+        this.log(`onoff already ${value}, skipping redundant write`);
+        return;
+      }
+
+      if (value === false) {
+        await this.onCapabilityTargetPowerMode('homey');
+        await this.onCapabilityTargetPower(0);
+      } else {
+        const lastActive = this.getStoreValue('lastActiveMode') || 'anti_feed';
+        if (lastActive === 'homey') {
+          // Previous active state was Homey-controlled with a non-zero setpoint.
+          const lastPower = this.getStoreValue('lastActivePower') || 0;
+          await this.onCapabilityTargetPowerMode('homey');
+          if (lastPower !== 0) {
+            await this.onCapabilityTargetPower(lastPower);
+          }
+        } else {
+          await this.onCapabilityTargetPowerMode(lastActive);
+        }
+      }
+
+      await this.setCapabilityValue('onoff', value).catch(this.error);
+      this.log(`onoff set to ${value}`);
+    } catch (error) {
+      this.log('Error setting onoff:', error);
+      throw new Error('Failed to set onoff');
+    }
+  }
+
+  // Homey standard energy capability: positive = charge, negative = discharge, 0 = idle.
+  // Translates to the Marstek force-mode + force_*_power registers and ensures
+  // RS485 control is active so the request actually takes effect.
+  async onCapabilityTargetPower(value, opts = {}) {
+    try {
+      if (!await this.connectModbus()) {
+        throw new Error('Modbus connection failed');
+      }
+
+      const slaveId = this.settings.slave_id || 1;
+      const power = Math.round(Number(value) || 0);
+
+      // Ensure RS485 / control mode is active so force registers are honored.
+      if (this.getCapabilityValue('user_work_mode') !== 'control_mode') {
+        this.log('target_power requested while not in control_mode - enabling RS485 control');
+        await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
+        await this.setCapabilityValue('user_work_mode', 'control_mode').catch(this.error);
+      }
+
+      // target_power and force_soc are mutually exclusive force strategies, but
+      // on the Marstek force_soc is driven by its own register (42011 SOC target)
+      // that keeps running until overwritten — writing 42010 alone does NOT
+      // cancel it. Only neutralize 42011 when force_soc was actually active, to
+      // avoid the extra Modbus roundtrip on every normal target_power write.
+      const currentForceMode = this.getCapabilityValue('force_charge_mode');
+      const currentSocTarget = this.getCapabilityValue('force_charge_target');
+      const currentSoc = this.getCapabilityValue('measure_battery');
+      const socTargetDrift = typeof currentSocTarget === 'number'
+        && typeof currentSoc === 'number'
+        && Math.abs(currentSocTarget - currentSoc) > 1;
+      if ((currentForceMode === 'force_soc' || socTargetDrift)
+          && typeof currentSoc === 'number' && currentSoc > 0) {
+        const clampedSoc = Math.max(11, Math.min(100, Math.round(currentSoc)));
+        await this.modbus.writeSingleRegister(slaveId, 42011, clampedSoc);
+        this.log(`Neutralized force_soc by writing current SOC (${clampedSoc}%) to 42011`);
+      }
+
+      let newForceMode = 'none';
+      if (power > 0) {
+        const charge = Math.min(2500, power);
+        await this.modbus.writeSingleRegister(slaveId, 42020, charge);
+        await this.modbus.writeSingleRegister(slaveId, 42010, 1); // force_charge
+        newForceMode = 'target_power';
+        await this.setCapabilityValue('force_charge_power', charge).catch(this.error);
+      } else if (power < 0) {
+        const discharge = Math.min(2500, Math.abs(power));
+        await this.modbus.writeSingleRegister(slaveId, 42021, discharge);
+        await this.modbus.writeSingleRegister(slaveId, 42010, 2); // force_discharge
+        newForceMode = 'target_power';
+        await this.setCapabilityValue('force_discharge_power', discharge).catch(this.error);
+      } else {
+        await this.modbus.writeSingleRegister(slaveId, 42010, 0); // none / idle
+      }
+
+      // Let the hardware settle before we claim success.
+      const delay = this.settings.force_mode_delay || 1000;
+      if (delay > 0) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      await this.setCapabilityValue('force_charge_mode', newForceMode).catch(this.error);
+      await this.setCapabilityValue('target_power', power).catch(this.error);
+      await this.setCapabilityValue('target_power_mode', 'homey').catch(this.error);
+
+      // A non-zero setpoint means the battery is actively doing work.
+      // Reflect that on the master switch and remember it for "on" restores.
+      if (power !== 0) {
+        await this.setCapabilityValue('onoff', true).catch(this.error);
+        await this.setStoreValue('lastActiveMode', 'homey');
+        await this.setStoreValue('lastActivePower', power);
+      } else {
+        await this.setCapabilityValue('onoff', false).catch(this.error);
+      }
+
+      this.log(`target_power set to ${power}W (mode=${newForceMode})`);
+    } catch (error) {
+      this.log('Error setting target_power:', error);
+      throw new Error('Failed to set target_power');
+    }
+  }
+
+  // target_power_mode is the unified picker for the Marstek's four operating
+  // strategies. 'homey' enables RS485 force-control so target_power and
+  // force_soc actually take effect; the other three hand control back to the
+  // battery's autonomous modes. Maps 1:1 onto user_work_mode.
+  async onCapabilityTargetPowerMode(value, opts = {}) {
+    try {
+      // Idempotency guard against stale refresh-writes from the mobile app.
+      if (this.getCapabilityValue('target_power_mode') === value) {
+        this.log(`target_power_mode already ${value}, skipping redundant write`);
+        return;
+      }
+
+      const workModeByTargetMode = {
+        homey: 'control_mode',
+        manual: 'manual',
+        anti_feed: 'anti_feed',
+        trade_mode: 'trade_mode',
+      };
+      const targetWorkMode = workModeByTargetMode[value];
+      if (!targetWorkMode) {
+        throw new Error(`Unsupported target_power_mode: ${value}`);
+      }
+
+      await this.onCapabilityUserWorkMode(targetWorkMode);
+
+      if (value !== 'homey') {
+        await this.setCapabilityValue('target_power', 0).catch(this.error);
+      }
+
+      await this.setCapabilityValue('target_power_mode', value).catch(this.error);
+
+      // Any non-homey mode is an autonomous "on" state. Homey mode is only "on"
+      // when a setpoint is actively driving the battery; without one it's idle.
+      if (value !== 'homey') {
+        await this.setCapabilityValue('onoff', true).catch(this.error);
+        await this.setStoreValue('lastActiveMode', value);
+      } else if ((this.getCapabilityValue('target_power') || 0) === 0) {
+        await this.setCapabilityValue('onoff', false).catch(this.error);
+      }
+
+      this.log(`target_power_mode set to ${value}`);
+    } catch (error) {
+      this.log('Error setting target_power_mode:', error);
+      throw new Error('Failed to set target_power_mode');
+    }
+  }
+
   async onCapabilityForceChargeTarget(value, opts = {}) {
     try {
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
-      
-      try {
-        await this.validateControlRequirement();
-      } catch (error) {
-        throw error;
+
+      // Setting a SOC target is intrinsically a force-control action, so
+      // auto-switch to homey mode instead of requiring the user to enable
+      // control_mode separately.
+      if (this.getCapabilityValue('target_power_mode') !== 'homey') {
+        this.log('force_charge_target changed while not in homey mode - switching to homey');
+        await this.onCapabilityTargetPowerMode('homey');
       }
 
       const slaveId = this.settings.slave_id || 1;
@@ -1583,8 +1850,23 @@ async writeDeviceName(name, config) {
     this.registerCapabilityListener('force_charge_power', this.onCapabilityForceChargePower.bind(this));
     // Listen for force discharge power changes
     this.registerCapabilityListener('force_discharge_power', this.onCapabilityForceDisChargePower.bind(this));
+    // Master on/off switch
+    this.registerCapabilityListener('onoff', this.onCapabilityOnoff.bind(this));
     // Listen for force charge target changes
     this.registerCapabilityListener('force_charge_target', this.onCapabilityForceChargeTarget.bind(this));
+    // Homey energy-management capabilities (target_power + mode are atomic)
+    this.registerMultipleCapabilityListener(
+      ['target_power', 'target_power_mode'],
+      async (values) => {
+        if (values.target_power_mode !== undefined) {
+          await this.onCapabilityTargetPowerMode(values.target_power_mode);
+        }
+        if (values.target_power !== undefined) {
+          await this.onCapabilityTargetPower(values.target_power);
+        }
+      },
+      500
+    );
     // Listen for operation mode changes (read-only, triggered from data updates)
     this.registerCapabilityListener('operation_mode', async (value, opts) => {
       this.log(`Operation mode changed to: ${value}`);

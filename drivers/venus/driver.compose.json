@@ -20,6 +20,7 @@
     }
   ],
   "capabilities": [
+    "onoff",
     "measure_voltage",
     "measure_current",
     "measure_power",
@@ -45,9 +46,25 @@
     "force_charge_power",
     "backup_mode",
     "max_charge_power_limit",
-    "max_discharge_power_limit"
+    "max_discharge_power_limit",
+    "target_power",
+    "target_power_mode"
   ],
   "capabilitiesOptions": {
+    "onoff": {
+      "title": {
+        "en": "Battery active",
+        "nl": "Batterij actief"
+      },
+      "insightsTitleTrue": {
+        "en": "Battery active",
+        "nl": "Batterij actief"
+      },
+      "insightsTitleFalse": {
+        "en": "Battery idle (off)",
+        "nl": "Batterij idle (uit)"
+      }
+    },
     "measure_voltage": {
       "title": {
         "en": "Grid output Voltage",
@@ -131,6 +148,55 @@
         "en": "MOSFET 2 temperature",
         "nl": "MOSFET 2 temperatuur"
       }
+    },
+    "target_power": {
+      "min": -2500,
+      "max": 2500,
+      "step": 5
+    },
+    "force_charge_power": {
+      "uiComponent": null
+    },
+    "force_discharge_power": {
+      "uiComponent": null
+    },
+    "force_charge_mode": {
+      "uiComponent": null
+    },
+    "user_work_mode": {
+      "uiComponent": null
+    },
+    "target_power_mode": {
+      "values": [
+        {
+          "id": "homey",
+          "title": {
+            "en": "Homey (force control)",
+            "nl": "Homey (geforceerd)"
+          }
+        },
+        {
+          "id": "anti_feed",
+          "title": {
+            "en": "Self consumption",
+            "nl": "Zelfconsumptie"
+          }
+        },
+        {
+          "id": "trade_mode",
+          "title": {
+            "en": "AI Optimization",
+            "nl": "AI Optimalisatie"
+          }
+        },
+        {
+          "id": "manual",
+          "title": {
+            "en": "Manual",
+            "nl": "Handmatig"
+          }
+        }
+      ]
     }
   },
   "settings": [

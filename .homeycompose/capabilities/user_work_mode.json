@@ -38,6 +38,7 @@
       }
     }
   ],
+  "deprecated": true,
   "getable": true,
   "setable": true,
   "uiComponent": "picker"
