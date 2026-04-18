@@ -45,8 +45,9 @@
       }
     }
   ],
-  "deprecated": true,
   "getable": true,
-  "setable": true,
-  "uiComponent": "picker"
+  "setable": false,
+  "uiComponent": "sensor",
+  "insights": true,
+  "icon": "/assets/operation-mode.svg"
 }

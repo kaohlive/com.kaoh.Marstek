@@ -488,7 +488,6 @@
       },
       {
         "id": "force_charge_mode_changed",
-        "deprecated": true,
         "title": {
           "en": "Force charge mode changed",
           "nl": "Gedwongen laadmodus is veranderd"
@@ -899,7 +898,6 @@
       },
       {
         "id": "force_charge_mode_is",
-        "deprecated": true,
         "title": {
           "en": "Force charge mode is",
           "nl": "Gedwongen laadmodus is"
@@ -2016,9 +2014,6 @@
         "force_discharge_power": {
           "uiComponent": null
         },
-        "force_charge_mode": {
-          "uiComponent": null
-        },
         "user_work_mode": {
           "uiComponent": null
         },
@@ -2332,10 +2327,11 @@
           }
         }
       ],
-      "deprecated": true,
       "getable": true,
-      "setable": true,
-      "uiComponent": "picker"
+      "setable": false,
+      "uiComponent": "sensor",
+      "insights": true,
+      "icon": "/assets/operation-mode.svg"
     },
     "force_charge_power": {
       "type": "number",

@@ -355,7 +355,6 @@
     },
     {
       "id": "force_charge_mode_changed",
-      "deprecated": true,
       "title": {
         "en": "Force charge mode changed",
         "nl": "Gedwongen laadmodus is veranderd"
@@ -731,7 +730,6 @@
     },
     {
       "id": "force_charge_mode_is",
-      "deprecated": true,
       "title": {
         "en": "Force charge mode is",
         "nl": "Gedwongen laadmodus is"

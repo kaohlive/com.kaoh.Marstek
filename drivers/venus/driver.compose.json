@@ -160,9 +160,6 @@
     "force_discharge_power": {
       "uiComponent": null
     },
-    "force_charge_mode": {
-      "uiComponent": null
-    },
     "user_work_mode": {
       "uiComponent": null
     },
