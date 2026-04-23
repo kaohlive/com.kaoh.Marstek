@@ -7,6 +7,6 @@
     "@types/homey": "npm:homey-apps-sdk-v3-types@^0.3.12"
   },
   "dependencies": {
-    "modbus-stream": "^0.46.0"
+    "modbus-serial": "^8.0.25"
   }
 }
