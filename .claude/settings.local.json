@@ -12,7 +12,8 @@
       "Bash(node -c drivers/venus/driver.js)",
       "Bash(node -c app.js)",
       "Bash(node -c api.js)",
-      "Bash(npx --no-install homey app validate)"
+      "Bash(npx --no-install homey app validate)",
+      "Bash(npx --no-install homey app validate --level verified)"
     ]
   }
 }

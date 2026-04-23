@@ -630,9 +630,12 @@ async writeDeviceName(name, config) {
         this.setCapabilityValue('target_power_mode', derivedTargetMode).catch(this.error);
       }
 
-      // onoff is "off" only when Homey is in full control AND target_power is 0.
-      // Any other combination means the battery is actively doing work.
-      const derivedOnOff = !(derivedTargetMode === 'homey' && derivedTargetPower === 0);
+      // onoff is "off" only when Homey is in full control AND nothing is
+      // actively driving the battery: target_power is 0 AND there is no
+      // active force_soc SOC target. force_soc is a valid homey-control
+      // strategy that should keep the switch shown as "on".
+      const forceSocActive = displayForceMode === 'force_soc';
+      const derivedOnOff = !(derivedTargetMode === 'homey' && derivedTargetPower === 0 && !forceSocActive);
       const currentOnOff = this.getCapabilityValue('onoff');
       if (currentOnOff !== derivedOnOff) {
         this.setCapabilityValue('onoff', derivedOnOff).catch(this.error);
@@ -1007,6 +1010,9 @@ async writeDeviceName(name, config) {
         this.log('Force SOC mode selected - writing current SOC target to register 42011');
         const currentTarget = this.getCapabilityValue('force_charge_target') || 25;
         await this.modbus.writeSingleRegister(slaveId, 42011, currentTarget);
+        // Reflect the master switch "on" immediately rather than waiting for poll.
+        await this.setCapabilityValue('onoff', true).catch(this.error);
+        await this.setStoreValue('lastActiveMode', 'homey');
       } else if (value === 'target_power') {
         // target_power is also a Homey-only umbrella label: re-apply the current
         // target_power setpoint so the hardware registers match the picker state.
@@ -1291,6 +1297,11 @@ async writeDeviceName(name, config) {
 
       // Update the capability value to reflect the change in UI
       await this.setCapabilityValue('force_charge_target', value);
+
+      // force_soc is an active homey-control strategy, so the master switch
+      // should reflect "on" immediately rather than wait for next poll.
+      await this.setCapabilityValue('onoff', true).catch(this.error);
+      await this.setStoreValue('lastActiveMode', 'homey');
 
       if (this.forceChargeTargetChangedTrigger && !opts.fromCloudSync) {
         await this.forceChargeTargetChangedTrigger.trigger(this,

@@ -2,6 +2,12 @@
   "name": {
     "en": "Venus Battery"
   },
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "lan"
+  ],
   "energy": {
     "homeBattery": true,
     "batteries": ["INTERNAL"],
