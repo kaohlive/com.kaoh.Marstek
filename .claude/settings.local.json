@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(npm install *)",
+      "Bash(npm uninstall *)",
+      "Bash(node -c api/ModbusClient.js)",
+      "Bash(node -e \"const c = require\\('./api/ModbusClient'\\); console.log\\(typeof c, Object.getOwnPropertyNames\\(c.prototype\\).slice\\(0,20\\)\\)\")",
+      "Bash(node -c drivers/venus/device.js)",
+      "Bash(node -c drivers/venus/driver.js)",
+      "Bash(node -c app.js)",
+      "Bash(node -c api.js)",
+      "Bash(npx --no-install homey app validate)"
     ]
   }
 }
