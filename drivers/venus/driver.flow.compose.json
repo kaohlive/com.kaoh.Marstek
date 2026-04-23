@@ -413,6 +413,13 @@
                 "en": "Force to SOC target",
                 "nl": "Forceer tot SOC doel"
               }
+            },
+            {
+              "id": "target_power",
+              "label": {
+                "en": "Homey target power",
+                "nl": "Homey doelvermogen"
+              }
             }
           ]
         }
@@ -777,6 +784,13 @@
               "label": {
                 "en": "Force to SOC target",
                 "nl": "Forceer tot SOC doel"
+              }
+            },
+            {
+              "id": "target_power",
+              "label": {
+                "en": "Homey target power",
+                "nl": "Homey doelvermogen"
               }
             }
           ]
@@ -1347,6 +1361,13 @@
               "label": {
                 "en": "Force to SOC target",
                 "nl": "Forceer tot SOC doel"
+              }
+            },
+            {
+              "id": "target_power",
+              "label": {
+                "en": "Homey target power",
+                "nl": "Homey doelvermogen"
               }
             }
           ]
