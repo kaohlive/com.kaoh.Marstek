@@ -29,6 +29,15 @@ class VenusBatteryDevice extends Homey.Device {
     this.consecutiveErrors = 0;
     this.maxConsecutiveErrors = this.settings.max_consecutive_errors || 3;
 
+    // Mode-events ringbuffer for write/read latency diagnostics. Passive: only
+    // records timestamps and raw register values to support data-driven tuning
+    // of work-mode write→stable-read behaviour. Bounded to prevent unbounded
+    // memory growth; oldest entries are dropped as new ones arrive.
+    this._modeEvents = [];
+    this._modeEventsMax = 500;
+    this._modeEventSeq = 0;
+    this._pendingWorkModeWrites = []; // tracks unmatched writes to compute ack-latency on poll
+
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
@@ -45,6 +54,35 @@ class VenusBatteryDevice extends Homey.Device {
     //Setup some global vars that we get from the device on init
     this.batteryCapacity=0;
     this.deviceVersion = 'unknown'; // Will be set to 'v1v2' or 'v3' based on firmware
+  }
+
+  // ============================================
+  // MODE-EVENT INSTRUMENTATION (passive, no behavior change)
+  // ============================================
+
+  _pushModeEvent(type, data) {
+    const entry = {
+      seq: ++this._modeEventSeq,
+      ts: new Date().toISOString(),
+      type,
+      ...data,
+    };
+    this._modeEvents.push(entry);
+    if (this._modeEvents.length > this._modeEventsMax) {
+      this._modeEvents.splice(0, this._modeEvents.length - this._modeEventsMax);
+    }
+    return entry;
+  }
+
+  // Returns a shallow copy so callers (API/settings page) cannot mutate state.
+  getModeEvents() {
+    return this._modeEvents.slice();
+  }
+
+  clearModeEvents() {
+    this._modeEvents = [];
+    this._pendingWorkModeWrites = [];
+    return true;
   }
 
   async repairCapabilities()
@@ -537,6 +575,56 @@ async writeDeviceName(name, config) {
         work_mode=3;
       console.log('workmode: '+work_mode);
       const workModeStr = this.driver.WORK_MODES[work_mode];
+
+      // Diagnostic: for every poll, advance pending work-mode writes so we can
+      // measure how many polls (and ms) it took for the device to expose the
+      // new value via reads. Match logic mirrors the merge in lines above:
+      // when 42000=21930 the effective work_mode is forced to 3 (control_mode),
+      // so we check 42000 for control_mode targets and 43000 for the rest.
+      if (this._pendingWorkModeWrites && this._pendingWorkModeWrites.length > 0) {
+        const rawReg43000 = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
+        const rawReg42000 = force_mode_state;
+        const stillPending = [];
+        for (const pending of this._pendingWorkModeWrites) {
+          pending.pollsObserved++;
+          const reg42Match = rawReg42000 === pending.expectedReg42000;
+          const reg43Match = pending.expectedReg43000 === null
+            ? true
+            : rawReg43000 === pending.expectedReg43000;
+          if (reg42Match && reg43Match) {
+            const latencyMs = Date.now() - pending.writeStartedAt;
+            this._pushModeEvent('write_acked', {
+              seq: pending.seq,
+              target_value: pending.target_value,
+              polls_to_ack: pending.pollsObserved,
+              latency_ms: latencyMs,
+              raw_reg_43000: rawReg43000,
+              raw_reg_42000: rawReg42000,
+            });
+            pending.matched = true;
+          } else if (pending.pollsObserved >= 10) {
+            // Give up after ~50s of polling at the default 5s interval. Record
+            // the timeout so we still capture failed/laggy writes.
+            this._pushModeEvent('write_timeout', {
+              seq: pending.seq,
+              target_value: pending.target_value,
+              polls_observed: pending.pollsObserved,
+              latency_ms: Date.now() - pending.writeStartedAt,
+              raw_reg_43000: rawReg43000,
+              raw_reg_42000: rawReg42000,
+            });
+          } else {
+            this._pushModeEvent('poll_pending', {
+              seq: pending.seq,
+              poll_index: pending.pollsObserved,
+              raw_reg_43000: rawReg43000,
+              raw_reg_42000: rawReg42000,
+            });
+            stillPending.push(pending);
+          }
+        }
+        this._pendingWorkModeWrites = stillPending;
+      }
 
       // Only set capability if value changed to prevent unnecessary triggers
       const currentWorkMode = this.getCapabilityValue('user_work_mode');
@@ -1075,6 +1163,30 @@ async writeDeviceName(name, config) {
         key => this.driver.WORK_MODES[key] === value
       );
       console.log('Attempt to set Work mode to '+userWorkValue+' based on '+value);
+      // Diagnostic: record the write intent + parameters so we can correlate
+      // with subsequent polls and measure write→stable-read latency.
+      const writeStartedAt = Date.now();
+      const writeEvent = this._pushModeEvent('write_start', {
+        slave_id: slaveId,
+        target_value: value,
+        target_register_43000: parseInt(userWorkValue),
+        target_register_42000: (userWorkValue == 3) ? 21930 : 21947,
+        caller: opts.fromCloudSync ? 'cloud_sync' : 'local',
+      });
+      const expectedReg43000 = (userWorkValue == 3)
+        ? null  // control_mode does not write 43000; observe via 42000=21930
+        : parseInt(userWorkValue);
+      const expectedReg42000 = (userWorkValue == 3) ? 21930 : 21947;
+      this._pendingWorkModeWrites.push({
+        seq: writeEvent.seq,
+        writeStartedAt,
+        target_value: value,
+        expectedReg43000,
+        expectedReg42000,
+        pollsObserved: 0,
+        matched: false,
+      });
+
       if(userWorkValue==3)
       {
         this.log('We set the modbus control flag to true');
@@ -1090,6 +1202,14 @@ async writeDeviceName(name, config) {
         this.log('We set the new work value');
         await this.modbus.writeSingleRegister(slaveId, 43000, userWorkValue);
       }
+
+      // Diagnostic: record write completion. The duration is purely the
+      // Modbus round-trip — NOT the time until the device exposes the new
+      // value via reads. That latency is computed on the next poll match.
+      this._pushModeEvent('write_done', {
+        seq: writeEvent.seq,
+        duration_ms: Date.now() - writeStartedAt,
+      });
       this.log('Work mode set to:'+value+', now trigger the workflow card');
 
       // Update the capability value to log the change in insights/timeline

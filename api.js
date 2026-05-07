@@ -55,6 +55,41 @@ module.exports = {
   },
 
   /**
+   * GET /modeEvents?deviceId=... - Diagnostic ringbuffer of work-mode events.
+   * Used by the settings page to inspect write→stable-read latency.
+   */
+  async getModeEvents({ homey, query }) {
+    try {
+      const deviceId = query && query.deviceId;
+      if (!deviceId) {
+        return { success: false, error: 'Missing deviceId' };
+      }
+      const events = homey.app.getModeEvents(deviceId);
+      return { success: true, events };
+    } catch (error) {
+      homey.app.error('API getModeEvents error:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
+   * POST /clearModeEvents - Clear the diagnostic ringbuffer.
+   * Body: { deviceId }
+   */
+  async clearModeEvents({ homey, body }) {
+    try {
+      const deviceId = body && body.deviceId;
+      if (!deviceId) {
+        return { success: false, error: 'Missing deviceId' };
+      }
+      return homey.app.clearModeEvents(deviceId);
+    } catch (error) {
+      homey.app.error('API clearModeEvents error:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  /**
    * POST /pollState - Poll all known registers from a device
    * Body: { deviceId }
    */
