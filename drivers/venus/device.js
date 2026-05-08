@@ -1177,6 +1177,22 @@ async writeDeviceName(name, config) {
         ? null  // control_mode does not write 43000; observe via 42000=21930
         : parseInt(userWorkValue);
       const expectedReg42000 = (userWorkValue == 3) ? 21930 : 21947;
+
+      // Any in-flight pending writes are about to be overwritten by this one,
+      // so they can never observe their original target. Record them as
+      // superseded (with how far they got) and drop them — otherwise they'd
+      // poll until timeout and pollute the latency distribution.
+      for (const old of this._pendingWorkModeWrites) {
+        this._pushModeEvent('write_superseded', {
+          seq: old.seq,
+          target_value: old.target_value,
+          superseded_by_seq: writeEvent.seq,
+          polls_observed: old.pollsObserved,
+          latency_ms: Date.now() - old.writeStartedAt,
+        });
+      }
+      this._pendingWorkModeWrites = [];
+
       this._pendingWorkModeWrites.push({
         seq: writeEvent.seq,
         writeStartedAt,
