@@ -1,6 +1,6 @@
 {
   "id": "com.kaoh.marstek",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "brandColor": "#1d8296",
   "compatibility": ">=12.13.0",
   "sdk": 3,

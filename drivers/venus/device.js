@@ -1288,12 +1288,21 @@ async writeDeviceName(name, config) {
   // RS485 control is active so the request actually takes effect.
   async onCapabilityTargetPower(value, opts = {}) {
     try {
+      const slaveId = this.settings.slave_id || 1;
+      const power = Math.round(Number(value) || 0);
+
+      // Hot-path guard: at sustained 1Hz from external orchestrators many
+      // consecutive writes carry the same setpoint (stable grid load). Skip
+      // entirely when nothing changed — saves ~150-200ms of Modbus traffic
+      // per duplicate request without changing any visible behaviour.
+      if (this.getCapabilityValue('target_power') === power) {
+        this.log(`target_power already ${power}W, skipping redundant write`);
+        return;
+      }
+
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
-
-      const slaveId = this.settings.slave_id || 1;
-      const power = Math.round(Number(value) || 0);
 
       // Ensure RS485 / control mode is active so force registers are honored.
       if (this.getCapabilityValue('user_work_mode') !== 'control_mode') {
@@ -1307,40 +1316,59 @@ async writeDeviceName(name, config) {
       // that keeps running until overwritten — writing 42010 alone does NOT
       // cancel it. Only neutralize 42011 when force_soc was actually active, to
       // avoid the extra Modbus roundtrip on every normal target_power write.
-      const currentForceMode = this.getCapabilityValue('force_charge_mode');
+      const previousForceMode = this.getCapabilityValue('force_charge_mode');
       const currentSocTarget = this.getCapabilityValue('force_charge_target');
       const currentSoc = this.getCapabilityValue('measure_battery');
       const socTargetDrift = typeof currentSocTarget === 'number'
         && typeof currentSoc === 'number'
         && Math.abs(currentSocTarget - currentSoc) > 1;
-      if ((currentForceMode === 'force_soc' || socTargetDrift)
+      if ((previousForceMode === 'force_soc' || socTargetDrift)
           && typeof currentSoc === 'number' && currentSoc > 0) {
         const clampedSoc = Math.max(11, Math.min(100, Math.round(currentSoc)));
         await this.modbus.writeSingleRegister(slaveId, 42011, clampedSoc);
         this.log(`Neutralized force_soc by writing current SOC (${clampedSoc}%) to 42011`);
       }
 
+      // Map current and target force-mode capability values to the underlying
+      // hardware register (42010): 0=none, 1=force_charge, 2=force_discharge.
+      // 'target_power' is our umbrella label that maps to 1 or 2 based on sign.
+      const prevReg42010 = (previousForceMode === 'force_charge')
+        ? 1
+        : (previousForceMode === 'force_discharge')
+          ? 2
+          : (previousForceMode === 'target_power')
+            ? ((this.getCapabilityValue('target_power') || 0) >= 0 ? 1 : 2)
+            : 0;
+      const newReg42010 = power > 0 ? 1 : (power < 0 ? 2 : 0);
+
       let newForceMode = 'none';
       if (power > 0) {
         const charge = Math.min(2500, power);
         await this.modbus.writeSingleRegister(slaveId, 42020, charge);
-        await this.modbus.writeSingleRegister(slaveId, 42010, 1); // force_charge
         newForceMode = 'target_power';
         await this.setCapabilityValue('force_charge_power', charge).catch(this.error);
       } else if (power < 0) {
         const discharge = Math.min(2500, Math.abs(power));
         await this.modbus.writeSingleRegister(slaveId, 42021, discharge);
-        await this.modbus.writeSingleRegister(slaveId, 42010, 2); // force_discharge
         newForceMode = 'target_power';
         await this.setCapabilityValue('force_discharge_power', discharge).catch(this.error);
-      } else {
-        await this.modbus.writeSingleRegister(slaveId, 42010, 0); // none / idle
+      }
+      // Only write register 42010 when the hardware force mode actually
+      // transitions. At 1Hz orchestrator cadence within the same regime
+      // (e.g. ramping +500W → +800W) this saves one Modbus round-trip.
+      if (newReg42010 !== prevReg42010) {
+        await this.modbus.writeSingleRegister(slaveId, 42010, newReg42010);
       }
 
-      // Let the hardware settle before we claim success.
-      const delay = this.settings.force_mode_delay || 1000;
-      if (delay > 0) {
-        await new Promise(resolve => setTimeout(resolve, delay));
+      // The force_mode_delay was added to give the battery time to switch
+      // between force regimes. Within the same regime (steady charging or
+      // discharging) it adds 1000ms of dead time per write — fatal for 1Hz
+      // setpoints. Apply only when 42010 actually changed.
+      if (newReg42010 !== prevReg42010) {
+        const delay = this.settings.force_mode_delay || 1000;
+        if (delay > 0) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
 
       await this.setCapabilityValue('force_charge_mode', newForceMode).catch(this.error);
