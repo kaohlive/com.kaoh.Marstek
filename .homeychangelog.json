@@ -73,5 +73,8 @@
   },
   "1.3.2": {
     "en": "modbus package and idle battery bug"
+  },
+  "1.3.3": {
+    "en": "Diagnostic ringbuffer for work-mode write/read latency, viewable in settings"
   }
 }

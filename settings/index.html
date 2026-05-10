@@ -266,6 +266,39 @@
       <div id="pollResult"></div>
     </div>
 
+    <!-- Mode Events Diagnostic -->
+    <div class="section">
+      <h2>4. Work-mode Event Buffer (diagnostic)</h2>
+      <p class="help-text">
+        Passive ringbuffer of work-mode write/read events. Use this to measure
+        how many polls (and ms) it takes for the device to expose a freshly
+        written work_mode value via reads. No behaviour change — purely logging.
+      </p>
+
+      <button id="modeEventsRefreshBtn" disabled>Refresh</button>
+      <button id="modeEventsCopyBtn" class="secondary" disabled>Copy JSON</button>
+      <button id="modeEventsDownloadBtn" class="secondary" disabled>Download JSON</button>
+      <button id="modeEventsClearBtn" class="danger" disabled>Clear buffer</button>
+
+      <div id="modeEventsStatus" class="help-text" style="margin-top: 12px;"></div>
+
+      <div style="margin-top: 12px; max-height: 400px; overflow: auto; border: 1px solid #e0e0e0; border-radius: 6px; background: white;">
+        <table id="modeEventsTable" style="width: 100%; font-size: 12px; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #f0f0f0; position: sticky; top: 0;">
+              <th style="text-align: left; padding: 6px;">Seq</th>
+              <th style="text-align: left; padding: 6px;">Time (local)</th>
+              <th style="text-align: left; padding: 6px;">Type</th>
+              <th style="text-align: left; padding: 6px;">Details</th>
+            </tr>
+          </thead>
+          <tbody id="modeEventsBody">
+            <tr><td colspan="4" style="padding: 12px; color: #888; text-align: center;">Select a device and click Refresh.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Common Registers Reference -->
     <div class="section">
       <h2>Reference: Common Registers</h2>
@@ -336,7 +369,10 @@
     // Device selection change
     document.getElementById('deviceSelect').addEventListener('change', function() {
       selectedDevice = this.value;
-      const buttons = ['readRegisterBtn', 'writeRegisterBtn', 'pollStateBtn', 'copyStateBtn'];
+      const buttons = [
+        'readRegisterBtn', 'writeRegisterBtn', 'pollStateBtn', 'copyStateBtn',
+        'modeEventsRefreshBtn', 'modeEventsCopyBtn', 'modeEventsDownloadBtn', 'modeEventsClearBtn',
+      ];
       buttons.forEach(id => {
         document.getElementById(id).disabled = !selectedDevice;
       });
@@ -490,6 +526,150 @@
       setTimeout(() => {
         this.textContent = originalText;
       }, 2000);
+    });
+
+    // ========== Mode Events diagnostic panel ==========
+    let modeEventsCache = [];
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function(c) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+      });
+    }
+
+    function formatLocalTs(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const pad = n => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+          + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds())
+          + '.' + String(d.getMilliseconds()).padStart(3, '0');
+      } catch (e) {
+        return iso;
+      }
+    }
+
+    function renderModeEvents(events) {
+      const body = document.getElementById('modeEventsBody');
+      const status = document.getElementById('modeEventsStatus');
+      if (!events || events.length === 0) {
+        body.innerHTML = '<tr><td colspan="4" style="padding: 12px; color: #888; text-align: center;">Buffer is empty. Trigger a work-mode change (e.g. switch target_power_mode) and refresh.</td></tr>';
+        status.textContent = '0 entries';
+        return;
+      }
+      // Compute summary: number of writes, average ack-latency, etc.
+      const acks = events.filter(e => e.type === 'write_acked');
+      const timeouts = events.filter(e => e.type === 'write_timeout');
+      const writes = events.filter(e => e.type === 'write_start');
+      let summary = events.length + ' entries — '
+        + writes.length + ' writes, '
+        + acks.length + ' acked, '
+        + timeouts.length + ' timed out';
+      if (acks.length > 0) {
+        const latencies = acks.map(e => e.latency_ms).filter(n => typeof n === 'number');
+        const avg = Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length);
+        const min = Math.min(...latencies);
+        const max = Math.max(...latencies);
+        const polls = acks.map(e => e.polls_to_ack).filter(n => typeof n === 'number');
+        const avgPolls = (polls.reduce((a, b) => a + b, 0) / polls.length).toFixed(1);
+        summary += ' — latency ' + min + '/' + avg + '/' + max + ' ms (min/avg/max), '
+          + avgPolls + ' polls avg to ack';
+      }
+      status.textContent = summary;
+
+      const rowColor = type => {
+        if (type === 'write_acked') return '#dff0d8';
+        if (type === 'write_timeout') return '#f2dede';
+        if (type === 'write_start' || type === 'write_done') return '#d9edf7';
+        return 'transparent';
+      };
+
+      const rows = events.slice().reverse().map(e => {
+        const details = Object.keys(e)
+          .filter(k => k !== 'seq' && k !== 'ts' && k !== 'type')
+          .map(k => k + '=' + JSON.stringify(e[k]))
+          .join(' ');
+        return '<tr style="background: ' + rowColor(e.type) + ';">'
+          + '<td style="padding: 4px 6px; font-family: monospace;">' + e.seq + '</td>'
+          + '<td style="padding: 4px 6px; font-family: monospace; white-space: nowrap;">' + escapeHtml(formatLocalTs(e.ts)) + '</td>'
+          + '<td style="padding: 4px 6px; font-weight: 600;">' + escapeHtml(e.type) + '</td>'
+          + '<td style="padding: 4px 6px; font-family: monospace; word-break: break-all;">' + escapeHtml(details) + '</td>'
+          + '</tr>';
+      });
+      body.innerHTML = rows.join('');
+    }
+
+    document.getElementById('modeEventsRefreshBtn').addEventListener('click', async function() {
+      if (!selectedDevice) return;
+      const status = document.getElementById('modeEventsStatus');
+      status.textContent = 'Loading...';
+      try {
+        const result = await homeyApi.api('GET', '/modeEvents?deviceId=' + encodeURIComponent(selectedDevice));
+        if (result && result.success) {
+          modeEventsCache = result.events || [];
+          renderModeEvents(modeEventsCache);
+        } else {
+          status.textContent = 'Error: ' + (result && result.error ? result.error : 'unknown');
+        }
+      } catch (error) {
+        status.textContent = 'Error: ' + error.message;
+      }
+    });
+
+    document.getElementById('modeEventsCopyBtn').addEventListener('click', function() {
+      if (!modeEventsCache || modeEventsCache.length === 0) return;
+      const json = JSON.stringify(modeEventsCache, null, 2);
+      // Use a hidden textarea fallback for environments without async clipboard.
+      const ta = document.createElement('textarea');
+      ta.value = json;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        const original = this.textContent;
+        this.textContent = 'Copied!';
+        setTimeout(() => { this.textContent = original; }, 2000);
+      } catch (e) {
+        alert('Copy failed: ' + e.message);
+      }
+      document.body.removeChild(ta);
+    });
+
+    document.getElementById('modeEventsDownloadBtn').addEventListener('click', function() {
+      if (!modeEventsCache || modeEventsCache.length === 0) return;
+      const json = JSON.stringify(modeEventsCache, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.download = 'marstek-mode-events-' + ts + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('modeEventsClearBtn').addEventListener('click', async function() {
+      if (!selectedDevice) return;
+      if (!confirm('Clear the entire mode-events buffer? This cannot be undone.')) return;
+      const status = document.getElementById('modeEventsStatus');
+      try {
+        const result = await homeyApi.api('POST', '/clearModeEvents', { deviceId: selectedDevice });
+        if (result && result.success) {
+          modeEventsCache = [];
+          renderModeEvents([]);
+          status.textContent = 'Buffer cleared.';
+        } else {
+          status.textContent = 'Error: ' + (result && result.error ? result.error : 'unknown');
+        }
+      } catch (error) {
+        status.textContent = 'Error: ' + error.message;
+      }
     });
   </script>
 </body>

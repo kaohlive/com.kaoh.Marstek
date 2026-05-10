@@ -51,6 +51,29 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
+   * Diagnostic: return the mode-events ringbuffer for a device.
+   * Used by the settings page to inspect write→stable-read latency.
+   */
+  getModeEvents(deviceId) {
+    const device = this.getVenusDeviceById(deviceId);
+    if (!device) {
+      throw new Error('Device not found');
+    }
+    return typeof device.getModeEvents === 'function' ? device.getModeEvents() : [];
+  }
+
+  clearModeEvents(deviceId) {
+    const device = this.getVenusDeviceById(deviceId);
+    if (!device) {
+      throw new Error('Device not found');
+    }
+    if (typeof device.clearModeEvents === 'function') {
+      device.clearModeEvents();
+    }
+    return { success: true };
+  }
+
+  /**
    * Get a Venus device by its ID
    */
   getVenusDeviceById(deviceId) {
