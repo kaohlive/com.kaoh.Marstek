@@ -38,6 +38,12 @@ class VenusBatteryDevice extends Homey.Device {
     this._modeEventSeq = 0;
     this._pendingWorkModeWrites = []; // tracks unmatched writes to compute ack-latency on poll
 
+    // Timestamp of the last force-command (register 42010) assertion. The Marstek
+    // applies a firmware power-countdown to the forcible/passive command that must
+    // be refreshed by re-asserting 42010; the poll loop uses this to keep it alive
+    // during steady same-regime charging. 0 = never written this session.
+    this._lastForceCmdWrite = 0;
+
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
@@ -288,6 +294,39 @@ async writeDeviceName(name, config) {
     this.startPolling();
   }
 
+  // The Marstek forcible/passive power command carries a firmware power-countdown
+  // (cd_time, ~300s per the JSON-RPC spec). It is restarted by re-asserting the
+  // force-command register 42010 — NOT by re-writing the power register. During
+  // steady same-regime charging the hot path skips 42010, so the countdown
+  // silently expires and the battery drops to 0W while still under homey control.
+  // Re-assert 42010 + the power register well within that window as a keepalive.
+  // Strictly gated: only under homey control with a non-zero setpoint — in
+  // autonomous modes we must not touch 42010, and at 0W there is nothing to keep
+  // alive. Called from the poll loop so it serializes with reads on the bus.
+  async _maybeForceKeepalive(slaveId) {
+    try {
+      if (this._isDeleted) return;
+      if (this.getCapabilityValue('target_power_mode') !== 'homey') return;
+      const power = Math.round(Number(this.getCapabilityValue('target_power')) || 0);
+      if (power === 0) return;
+
+      const interval = this.settings.force_keepalive_interval || 120000;
+      if (Date.now() - this._lastForceCmdWrite < interval) return;
+
+      if (power > 0) {
+        await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, power));
+        await this.modbus.writeSingleRegister(slaveId, 42010, 1);
+      } else {
+        await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, Math.abs(power)));
+        await this.modbus.writeSingleRegister(slaveId, 42010, 2);
+      }
+      this._lastForceCmdWrite = Date.now();
+      this.log(`Force keepalive: re-asserted ${power}W (42010) to refresh firmware countdown`);
+    } catch (error) {
+      this.log('Force keepalive skipped (will retry next poll):', error.message);
+    }
+  }
+
   //Update info that does not change often, we do this on device init, if you whant new data, just restart the app
   async processDeviceStaticInfo(slaveId)
   {
@@ -400,6 +439,9 @@ async writeDeviceName(name, config) {
       // Read system operation status registers
       console.log('Get system data [slave '+slaveId+']')
       await this.processSystemData(slaveId);
+
+      // Refresh the firmware power-countdown if it is going stale (never throws).
+      await this._maybeForceKeepalive(slaveId);
 
       // Successful poll - reset error counter and ensure device is marked available
       this.consecutiveErrors = 0;
@@ -1114,6 +1156,7 @@ async writeDeviceName(name, config) {
         console.log('Attempt to set mode to '+modeValue+' based on '+value);
         //We expect the work mode to be on force_control, else this is ignored
         await this.modbus.writeSingleRegister(slaveId, 42010, parseInt(modeValue));
+        if (parseInt(modeValue) !== 0) this._lastForceCmdWrite = Date.now();
       }
       this.log('Charge mode set to:', value);
 
@@ -1358,6 +1401,7 @@ async writeDeviceName(name, config) {
       // (e.g. ramping +500W → +800W) this saves one Modbus round-trip.
       if (newReg42010 !== prevReg42010) {
         await this.modbus.writeSingleRegister(slaveId, 42010, newReg42010);
+        if (newReg42010 !== 0) this._lastForceCmdWrite = Date.now();
       }
 
       // The force_mode_delay was added to give the battery time to switch
