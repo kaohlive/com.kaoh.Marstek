@@ -307,21 +307,48 @@ async writeDeviceName(name, config) {
     try {
       if (this._isDeleted) return;
       if (this.getCapabilityValue('target_power_mode') !== 'homey') return;
-      const power = Math.round(Number(this.getCapabilityValue('target_power')) || 0);
-      if (power === 0) return;
 
       const interval = this.settings.force_keepalive_interval || 120000;
       if (Date.now() - this._lastForceCmdWrite < interval) return;
 
-      if (power > 0) {
-        await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, power));
-        await this.modbus.writeSingleRegister(slaveId, 42010, 1);
-      } else {
-        await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, Math.abs(power)));
-        await this.modbus.writeSingleRegister(slaveId, 42010, 2);
+      // Determine the active force-command register value from the high-level
+      // force_charge_mode. Any non-idle mode (42010 != 0) needs the firmware
+      // countdown refreshed - this covers target_power, plain force_charge /
+      // force_discharge, AND force_soc (which holds 42010=1 to drive charging
+      // toward the SOC target).
+      const mode = this.getCapabilityValue('force_charge_mode');
+      const targetPower = Math.round(Number(this.getCapabilityValue('target_power')) || 0);
+      let reg42010 = 0;
+      if (mode === 'force_charge' || mode === 'force_soc') {
+        reg42010 = 1;
+      } else if (mode === 'force_discharge') {
+        reg42010 = 2;
+      } else if (mode === 'target_power' && targetPower !== 0) {
+        reg42010 = targetPower > 0 ? 1 : 2;
       }
+      if (reg42010 === 0) return;
+
+      // Re-assert the matching power register so a prior countdown revert is
+      // recovered. For force_soc the battery picks its own charge power from
+      // the SOC target - touching 42020/42021 would fight that, so we refresh
+      // only 42010 in that mode.
+      if (mode === 'force_charge') {
+        const power = this.getCapabilityValue('force_charge_power') || 0;
+        if (power > 0) await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, power));
+      } else if (mode === 'force_discharge') {
+        const power = this.getCapabilityValue('force_discharge_power') || 0;
+        if (power > 0) await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, power));
+      } else if (mode === 'target_power') {
+        if (targetPower > 0) {
+          await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, targetPower));
+        } else {
+          await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, Math.abs(targetPower)));
+        }
+      }
+
+      await this.modbus.writeSingleRegister(slaveId, 42010, reg42010);
       this._lastForceCmdWrite = Date.now();
-      this.log(`Force keepalive: re-asserted ${power}W (42010) to refresh firmware countdown`);
+      this.log(`Force keepalive: re-asserted 42010=${reg42010} (mode=${mode}) to refresh firmware countdown`);
     } catch (error) {
       this.log('Force keepalive skipped (will retry next poll):', error.message);
     }
