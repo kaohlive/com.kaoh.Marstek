@@ -294,15 +294,18 @@ async writeDeviceName(name, config) {
     this.startPolling();
   }
 
-  // The Marstek forcible/passive power command carries a firmware power-countdown
-  // (cd_time, ~300s per the JSON-RPC spec). It is restarted by re-asserting the
-  // force-command register 42010 — NOT by re-writing the power register. During
-  // steady same-regime charging the hot path skips 42010, so the countdown
-  // silently expires and the battery drops to 0W while still under homey control.
-  // Re-assert 42010 + the power register well within that window as a keepalive.
-  // Strictly gated: only under homey control with a non-zero setpoint — in
-  // autonomous modes we must not touch 42010, and at 0W there is nothing to keep
-  // alive. Called from the poll loop so it serializes with reads on the bus.
+  // The Marstek's force-control surface (RS485 mode 21930 + force command 42010)
+  // is subject to a firmware power-countdown (cd_time, ~300-700s observed). Field
+  // logs from firmware 147.114.104.116 show that idempotent re-writes of 42010
+  // with its current value are ack'd but do NOT restart the countdown - only a
+  // real state transition does. Toggling 42010 ourselves would induce the very
+  // 0W dips we are trying to prevent, so instead we ALSO re-assert register 42000
+  // (RS485 control flag = 21930) on each tick. If the watchdog is actually rooted
+  // there (which would explain why writing 42010 alone doesn't refresh it), this
+  // is the safe non-paradoxical refresh signal.
+  // Strictly gated: only under homey control with an active force mode - in
+  // autonomous modes we must not touch 42010 or 42000. Called from the poll loop
+  // so it serializes with reads on the bus.
   async _maybeForceKeepalive(slaveId) {
     try {
       if (this._isDeleted) return;
@@ -328,6 +331,11 @@ async writeDeviceName(name, config) {
       }
       if (reg42010 === 0) return;
 
+      // Re-assert the RS485 control flag (21930). Idempotent re-writes of 42010
+      // alone did not refresh the countdown in field tests; the watchdog may be
+      // on this register instead. Same value, no behavior change if it isn't.
+      await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
+
       // Re-assert the matching power register so a prior countdown revert is
       // recovered. For force_soc the battery picks its own charge power from
       // the SOC target - touching 42020/42021 would fight that, so we refresh
@@ -348,7 +356,7 @@ async writeDeviceName(name, config) {
 
       await this.modbus.writeSingleRegister(slaveId, 42010, reg42010);
       this._lastForceCmdWrite = Date.now();
-      this.log(`Force keepalive: re-asserted 42010=${reg42010} (mode=${mode}) to refresh firmware countdown`);
+      this.log(`Force keepalive: re-asserted 42000=21930 + 42010=${reg42010} (mode=${mode}) to refresh firmware countdown`);
     } catch (error) {
       this.log('Force keepalive skipped (will retry next poll):', error.message);
     }

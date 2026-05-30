@@ -85,5 +85,8 @@
   },
   "1.3.6": {
     "en": "Extend the force-control keepalive to force_soc, force_charge and force_discharge modes (1.3.5 only covered target_power)"
+  },
+  "1.3.7": {
+    "en": "Also refresh RS485 control flag 42000 in the keepalive - idempotent re-writes of 42010 alone did not refresh the firmware countdown"
   }
 }
