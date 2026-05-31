@@ -246,8 +246,11 @@
           "label": {
             "en": "Poll Interval (ms)"
           },
+          "hint": {
+            "en": "Full state-read poll cycle. Cannot be set below 2000ms - the cycle itself takes ~1-2s of Modbus traffic and overlapping polls would cause read errors. Force-command recovery runs on a separate 1s fast-check loop independent of this setting."
+          },
           "value": 5000,
-          "min": 1000,
+          "min": 2000,
           "max": 60000
         },
         {

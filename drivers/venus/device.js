@@ -38,11 +38,23 @@ class VenusBatteryDevice extends Homey.Device {
     this._modeEventSeq = 0;
     this._pendingWorkModeWrites = []; // tracks unmatched writes to compute ack-latency on poll
 
-    // Timestamp of the last force-command (register 42010) assertion. The Marstek
-    // applies a firmware power-countdown to the forcible/passive command that must
-    // be refreshed by re-asserting 42010; the poll loop uses this to keep it alive
-    // during steady same-regime charging. 0 = never written this session.
+    // Tracking for the force-command auto-recovery: the Marstek's force-command
+    // (register 42010) is subject to a firmware power-countdown that periodically
+    // reverts it to 0 mid-session. Idempotent re-writes are ack'd but do not
+    // refresh the countdown - only real transitions do, but toggling ourselves
+    // induces the very dip we are preventing. Instead we detect unsolicited
+    // reverts on a fast loop and re-assert immediately.
+    //   _lastForceCmdValue : last value we wrote to 42010 (0/1/2, or undefined
+    //                        if never written this session). Used to decide
+    //                        whether a current observed 0 is a revert worth
+    //                        recovering from, or an intentional idle.
+    //   _lastForceCmdWrite : timestamp of that write (for diagnostics).
+    //   _modbusBusy        : single mutex shared by the slow poll and the fast
+    //                        force-check loop so they cannot interleave reads
+    //                        on the same Modbus connection.
+    this._lastForceCmdValue = undefined;
     this._lastForceCmdWrite = 0;
+    this._modbusBusy = false;
 
     // Setup Modbus event handlers
     this.setupModbusHandlers();
@@ -271,14 +283,34 @@ async writeDeviceName(name, config) {
 
   startPolling() {
     this.stopPolling();
-    
+
     const interval = this.settings.poll_interval || 5000;
+    // Overlap guard: a full pollData cycle currently runs ~20-25 sequential
+    // Modbus reads (~1-2s). If the next tick fires while the previous is still
+    // running, two parallel reads would corrupt the response stream. Skip the
+    // tick when the bus is busy (slow poll OR fast force-check holding the lock).
     this.pollInterval = setInterval(async () => {
-      await this.pollData();
+      if (this._modbusBusy) return;
+      this._modbusBusy = true;
+      try {
+        await this.pollData();
+      } finally {
+        this._modbusBusy = false;
+      }
     }, interval);
-    
-    // Initial poll
-    setTimeout(() => this.pollData(), 1000);
+
+    // Initial poll (also lock-guarded)
+    setTimeout(async () => {
+      if (this._modbusBusy) return;
+      this._modbusBusy = true;
+      try {
+        await this.pollData();
+      } finally {
+        this._modbusBusy = false;
+      }
+    }, 1000);
+
+    this.startFastForceCheck();
   }
 
   stopPolling() {
@@ -286,6 +318,7 @@ async writeDeviceName(name, config) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
     }
+    this.stopFastForceCheck();
   }
 
   restartPolling() {
@@ -294,72 +327,89 @@ async writeDeviceName(name, config) {
     this.startPolling();
   }
 
-  // The Marstek's force-control surface (RS485 mode 21930 + force command 42010)
-  // is subject to a firmware power-countdown (cd_time, ~300-700s observed). Field
-  // logs from firmware 147.114.104.116 show that idempotent re-writes of 42010
-  // with its current value are ack'd but do NOT restart the countdown - only a
-  // real state transition does. Toggling 42010 ourselves would induce the very
-  // 0W dips we are trying to prevent, so instead we ALSO re-assert register 42000
-  // (RS485 control flag = 21930) on each tick. If the watchdog is actually rooted
-  // there (which would explain why writing 42010 alone doesn't refresh it), this
-  // is the safe non-paradoxical refresh signal.
-  // Strictly gated: only under homey control with an active force mode - in
-  // autonomous modes we must not touch 42010 or 42000. Called from the poll loop
-  // so it serializes with reads on the bus.
-  async _maybeForceKeepalive(slaveId) {
-    try {
-      if (this._isDeleted) return;
-      if (this.getCapabilityValue('target_power_mode') !== 'homey') return;
+  // Fast force-check loop. Once per second, read just register 42010 (~50-100ms
+  // single-register Modbus call) and compare to what we last wrote. If we wrote
+  // a non-zero value but the firmware now reports 0, the firmware power-countdown
+  // expired and reverted us mid-session - re-assert immediately. Bounds the dip
+  // to ~1s (one fast-check cycle) instead of the unbounded original behaviour.
+  //
+  // Why this is non-paradoxical: we are reacting to a revert that already
+  // happened, not preventing one by inducing it. Idempotent re-writes proven
+  // not to refresh the countdown (v1.3.5-1.3.7 field data) - the only way to
+  // restart it from outside is a real 0->N transition, which the firmware
+  // itself just performed. So writing back N is exactly what is needed.
+  //
+  // Shares the _modbusBusy mutex with the slow poll so the two timers cannot
+  // interleave reads on the same connection.
+  startFastForceCheck() {
+    this.stopFastForceCheck();
+    this.fastForceCheckInterval = setInterval(() => this._fastForceCheck(), 1000);
+  }
 
-      const interval = this.settings.force_keepalive_interval || 120000;
-      if (Date.now() - this._lastForceCmdWrite < interval) return;
-
-      // Determine the active force-command register value from the high-level
-      // force_charge_mode. Any non-idle mode (42010 != 0) needs the firmware
-      // countdown refreshed - this covers target_power, plain force_charge /
-      // force_discharge, AND force_soc (which holds 42010=1 to drive charging
-      // toward the SOC target).
-      const mode = this.getCapabilityValue('force_charge_mode');
-      const targetPower = Math.round(Number(this.getCapabilityValue('target_power')) || 0);
-      let reg42010 = 0;
-      if (mode === 'force_charge' || mode === 'force_soc') {
-        reg42010 = 1;
-      } else if (mode === 'force_discharge') {
-        reg42010 = 2;
-      } else if (mode === 'target_power' && targetPower !== 0) {
-        reg42010 = targetPower > 0 ? 1 : 2;
-      }
-      if (reg42010 === 0) return;
-
-      // Re-assert the RS485 control flag (21930). Idempotent re-writes of 42010
-      // alone did not refresh the countdown in field tests; the watchdog may be
-      // on this register instead. Same value, no behavior change if it isn't.
-      await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
-
-      // Re-assert the matching power register so a prior countdown revert is
-      // recovered. For force_soc the battery picks its own charge power from
-      // the SOC target - touching 42020/42021 would fight that, so we refresh
-      // only 42010 in that mode.
-      if (mode === 'force_charge') {
-        const power = this.getCapabilityValue('force_charge_power') || 0;
-        if (power > 0) await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, power));
-      } else if (mode === 'force_discharge') {
-        const power = this.getCapabilityValue('force_discharge_power') || 0;
-        if (power > 0) await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, power));
-      } else if (mode === 'target_power') {
-        if (targetPower > 0) {
-          await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, targetPower));
-        } else {
-          await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, Math.abs(targetPower)));
-        }
-      }
-
-      await this.modbus.writeSingleRegister(slaveId, 42010, reg42010);
-      this._lastForceCmdWrite = Date.now();
-      this.log(`Force keepalive: re-asserted 42000=21930 + 42010=${reg42010} (mode=${mode}) to refresh firmware countdown`);
-    } catch (error) {
-      this.log('Force keepalive skipped (will retry next poll):', error.message);
+  stopFastForceCheck() {
+    if (this.fastForceCheckInterval) {
+      clearInterval(this.fastForceCheckInterval);
+      this.fastForceCheckInterval = null;
     }
+  }
+
+  async _fastForceCheck() {
+    if (this._isDeleted) return;
+    if (this._modbusBusy) return;
+    // Only meaningful while we are actively driving the battery.
+    if (this.getCapabilityValue('target_power_mode') !== 'homey') return;
+    if (!this._lastForceCmdValue) return; // never wrote, or wrote 0 (intentional idle)
+    if (!this.modbus) return;
+
+    this._modbusBusy = true;
+    try {
+      const slaveId = this.settings.slave_id || 1;
+      const reg = await this.modbus.readHoldingRegisters(slaveId, 42010, 1);
+      const observed = ModbusClient.bufferToUint16(Buffer.concat(reg));
+      if (observed === 0) {
+        // Firmware reverted under us. Re-assert now.
+        this._pushModeEvent('force_revert_detected', {
+          expected: this._lastForceCmdValue,
+          observed: 0,
+          age_ms: Date.now() - this._lastForceCmdWrite,
+        });
+        await this._autoRecoverForceCmd(slaveId);
+      }
+    } catch (error) {
+      // Connection drops, transient Modbus errors etc. - slow poll will recover.
+      this.log('Fast force-check skipped (will retry):', error.message);
+    } finally {
+      this._modbusBusy = false;
+    }
+  }
+
+  async _autoRecoverForceCmd(slaveId) {
+    const target = this._lastForceCmdValue;
+    if (!target) return;
+    const mode = this.getCapabilityValue('force_charge_mode');
+
+    // For modes where the user/orchestrator specifies a power, re-write the
+    // matching power register too - the firmware may have zeroed it together
+    // with 42010 on the revert. For force_soc the battery picks its own power
+    // from the SOC target, so we only re-assert 42010.
+    if (mode === 'target_power' || mode === 'force_charge') {
+      const power = this.getCapabilityValue('force_charge_power')
+        || Math.abs(this.getStoreValue('lastActivePower') || 0);
+      if (power > 0) {
+        await this.modbus.writeSingleRegister(slaveId, 42020, Math.min(2500, power));
+      }
+    } else if (mode === 'force_discharge') {
+      const power = this.getCapabilityValue('force_discharge_power')
+        || Math.abs(this.getStoreValue('lastActivePower') || 0);
+      if (power > 0) {
+        await this.modbus.writeSingleRegister(slaveId, 42021, Math.min(2500, power));
+      }
+    }
+
+    await this.modbus.writeSingleRegister(slaveId, 42010, target);
+    this._lastForceCmdWrite = Date.now();
+    this.log(`Auto-recovery: re-asserted 42010=${target} (mode=${mode}) after firmware revert`);
+    this._pushModeEvent('force_recovered', { reasserted: target, mode });
   }
 
   //Update info that does not change often, we do this on device init, if you whant new data, just restart the app
@@ -474,9 +524,6 @@ async writeDeviceName(name, config) {
       // Read system operation status registers
       console.log('Get system data [slave '+slaveId+']')
       await this.processSystemData(slaveId);
-
-      // Refresh the firmware power-countdown if it is going stale (never throws).
-      await this._maybeForceKeepalive(slaveId);
 
       // Successful poll - reset error counter and ensure device is marked available
       this.consecutiveErrors = 0;
@@ -1172,9 +1219,16 @@ async writeDeviceName(name, config) {
 
       // force_soc is a Homey-only mode - on hardware it is triggered by setting a SOC target on register 42011
       if (value === 'force_soc') {
-        this.log('Force SOC mode selected - writing current SOC target to register 42011');
+        this.log('Force SOC mode selected - writing current SOC target to register 42011 + asserting 42010=1');
         const currentTarget = this.getCapabilityValue('force_charge_target') || 25;
         await this.modbus.writeSingleRegister(slaveId, 42011, currentTarget);
+        // Also assert 42010=1: without this, force_soc only "works" if 42010 was
+        // already 1 from a prior session, which makes cold-start activation
+        // silently no-op AND would trick the auto-recovery into thinking the
+        // 42010=0 is an unsolicited revert on first poll.
+        await this.modbus.writeSingleRegister(slaveId, 42010, 1);
+        this._lastForceCmdValue = 1;
+        this._lastForceCmdWrite = Date.now();
         // Reflect the master switch "on" immediately rather than waiting for poll.
         await this.setCapabilityValue('onoff', true).catch(this.error);
         await this.setStoreValue('lastActiveMode', 'homey');
@@ -1190,8 +1244,10 @@ async writeDeviceName(name, config) {
         );
         console.log('Attempt to set mode to '+modeValue+' based on '+value);
         //We expect the work mode to be on force_control, else this is ignored
-        await this.modbus.writeSingleRegister(slaveId, 42010, parseInt(modeValue));
-        if (parseInt(modeValue) !== 0) this._lastForceCmdWrite = Date.now();
+        const intValue = parseInt(modeValue);
+        await this.modbus.writeSingleRegister(slaveId, 42010, intValue);
+        this._lastForceCmdValue = intValue;
+        if (intValue !== 0) this._lastForceCmdWrite = Date.now();
       }
       this.log('Charge mode set to:', value);
 
@@ -1436,8 +1492,13 @@ async writeDeviceName(name, config) {
       // (e.g. ramping +500W → +800W) this saves one Modbus round-trip.
       if (newReg42010 !== prevReg42010) {
         await this.modbus.writeSingleRegister(slaveId, 42010, newReg42010);
-        if (newReg42010 !== 0) this._lastForceCmdWrite = Date.now();
+        this._lastForceCmdWrite = Date.now();
       }
+      // Track our intent for the auto-recovery fast-check. Even when the 42010
+      // write was skipped above (same regime), our intent is still newReg42010
+      // and the fast-check needs that to decide whether a later observed 0 is
+      // a firmware revert (recover) or an intentional idle (ignore).
+      this._lastForceCmdValue = newReg42010;
 
       // The force_mode_delay was added to give the battery time to switch
       // between force regimes. Within the same regime (steady charging or
