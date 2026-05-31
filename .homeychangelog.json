@@ -91,5 +91,8 @@
   },
   "1.3.8": {
     "en": "Replace keepalive with fast-check auto-recovery: detect unsolicited 42010 reverts within ~1s and re-assert (bounds 0W dips); enforce 2s minimum poll interval and add overlap guard"
+  },
+  "1.3.9": {
+    "en": "Fix force_soc auto-recovery: re-trigger via 42011 (the firmware's write-and-act register) instead of 42010, and skip when SOC has reached its target"
   }
 }

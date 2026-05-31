@@ -388,10 +388,36 @@ async writeDeviceName(name, config) {
     if (!target) return;
     const mode = this.getCapabilityValue('force_charge_mode');
 
-    // For modes where the user/orchestrator specifies a power, re-write the
-    // matching power register too - the firmware may have zeroed it together
-    // with 42010 on the revert. For force_soc the battery picks its own power
-    // from the SOC target, so we only re-assert 42010.
+    // force_soc uses a different recovery path: 42011 is the write-and-act
+    // trigger on this firmware. Re-writing it with the current SOC target
+    // re-engages force-charge internally; touching 42010 would either be a
+    // no-op (firmware ignores it for force_soc) or fight the firmware's own
+    // state machine.
+    if (mode === 'force_soc') {
+      const soc = this.getCapabilityValue('measure_battery');
+      const socTarget = this.getCapabilityValue('force_charge_target') || 0;
+      // Skip recovery when the battery has legitimately reached its SOC target:
+      // 42010=0 then is the correct behaviour (firmware stopped because the
+      // target is met). Without this guard we'd re-trigger every fast-check
+      // tick forever once SOC was reached.
+      if (typeof soc === 'number' && socTarget > 0 && soc >= socTarget - 1) {
+        this._pushModeEvent('force_recovery_skipped', {
+          reason: 'soc_at_target',
+          soc,
+          target: socTarget,
+        });
+        return;
+      }
+      await this.modbus.writeSingleRegister(slaveId, 42011, socTarget);
+      this._lastForceCmdWrite = Date.now();
+      this.log(`Auto-recovery: re-triggered force_soc via 42011=${socTarget}% after firmware revert`);
+      this._pushModeEvent('force_recovered', { reasserted: socTarget, mode, register: 42011 });
+      return;
+    }
+
+    // target_power / force_charge / force_discharge: re-write the matching
+    // power register (firmware may have zeroed it together with 42010 on the
+    // revert), then re-assert 42010.
     if (mode === 'target_power' || mode === 'force_charge') {
       const power = this.getCapabilityValue('force_charge_power')
         || Math.abs(this.getStoreValue('lastActivePower') || 0);
@@ -409,7 +435,7 @@ async writeDeviceName(name, config) {
     await this.modbus.writeSingleRegister(slaveId, 42010, target);
     this._lastForceCmdWrite = Date.now();
     this.log(`Auto-recovery: re-asserted 42010=${target} (mode=${mode}) after firmware revert`);
-    this._pushModeEvent('force_recovered', { reasserted: target, mode });
+    this._pushModeEvent('force_recovered', { reasserted: target, mode, register: 42010 });
   }
 
   //Update info that does not change often, we do this on device init, if you whant new data, just restart the app
@@ -1217,16 +1243,17 @@ async writeDeviceName(name, config) {
 
       const slaveId = this.settings.slave_id || 1;
 
-      // force_soc is a Homey-only mode - on hardware it is triggered by setting a SOC target on register 42011
+      // force_soc is a Homey-only mode - on hardware it is triggered by setting
+      // a SOC target on register 42011. 42011 is special on this firmware: a
+      // write-and-act register where the firmware engages force-charge
+      // internally without needing 42010 to be set explicitly. Do NOT write
+      // 42010 here - the firmware manages that itself for the force_soc path.
+      // We still set _lastForceCmdValue = 1 so the auto-recovery fast-check
+      // treats this as an active force session and reacts if 42010 reverts.
       if (value === 'force_soc') {
-        this.log('Force SOC mode selected - writing current SOC target to register 42011 + asserting 42010=1');
+        this.log('Force SOC mode selected - writing current SOC target to register 42011');
         const currentTarget = this.getCapabilityValue('force_charge_target') || 25;
         await this.modbus.writeSingleRegister(slaveId, 42011, currentTarget);
-        // Also assert 42010=1: without this, force_soc only "works" if 42010 was
-        // already 1 from a prior session, which makes cold-start activation
-        // silently no-op AND would trick the auto-recovery into thinking the
-        // 42010=0 is an unsolicited revert on first poll.
-        await this.modbus.writeSingleRegister(slaveId, 42010, 1);
         this._lastForceCmdValue = 1;
         this._lastForceCmdWrite = Date.now();
         // Reflect the master switch "on" immediately rather than waiting for poll.
