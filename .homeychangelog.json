@@ -97,5 +97,8 @@
   },
   "1.3.10": {
     "en": "Detect partial reverts (power register zeroed with 42010 still engaged), update target_power capability immediately on recovery for faster chart updates, and remove a race-condition logging artifact"
+  },
+  "1.3.11": {
+    "en": "Stability fix: revert v1.3.10's second fast-check Modbus read which overloaded the Marstek bus and caused device-wide timeouts. Keeps the race-fix and immediate capability update from v1.3.10."
   }
 }

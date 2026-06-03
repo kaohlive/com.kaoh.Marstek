@@ -327,18 +327,17 @@ async writeDeviceName(name, config) {
     this.startPolling();
   }
 
-  // Fast force-check loop. Once per second, read the force command (42010) and
-  // its matching power register (42020 or 42021) and compare to what we last
-  // wrote. The firmware power-countdown can revert force-control in two ways:
-  //   - 'force_command' revert: 42010 -> 0 (entire force command dropped).
-  //   - 'power_register' revert: 42010 stays N, but 42020/42021 -> 0 (force
-  //                              command nominally engaged but commanded power
-  //                              zeroed). Field evidence: target_power chart
-  //                              shows 6+ dips per hour while only ~2 full
-  //                              42010 reverts captured per 16h. The remainder
-  //                              must be power-register-only reverts.
-  // For force_soc we only watch 42010 - the battery picks its own power from
-  // the SOC target so 42020/42021 are not in play.
+  // Fast force-check loop. Once per second, read the force command register
+  // (42010, a single-register Modbus read ~50-100ms) and compare to what we
+  // last wrote. If the firmware power-countdown reverted us to 0, re-assert.
+  //
+  // v1.3.10 added a second read here (42020/42021) for a "partial revert"
+  // hypothesis. Field log on firmware 147.114.104.116 showed device-wide
+  // Modbus timeouts under the doubled fast-check load. The Marstek's bus is
+  // load-sensitive, so we are back to one read per tick. The partial-revert
+  // hypothesis turned out to be wrong anyway: the chart dips come from 42010
+  // going to 0 (line 909 derives target_power from forceModeStr), which this
+  // single-read check already catches.
   //
   // Why this is non-paradoxical: we are reacting to a revert that already
   // happened, not preventing one by inducing it. Idempotent re-writes proven
@@ -375,47 +374,20 @@ async writeDeviceName(name, config) {
     this._modbusBusy = true;
     try {
       const slaveId = this.settings.slave_id || 1;
-      const mode = this.getCapabilityValue('force_charge_mode');
-
-      // Step 1: read 42010 - did the force command itself revert?
       const reg10 = await this.modbus.readHoldingRegisters(slaveId, 42010, 1);
-      const observed42010 = ModbusClient.bufferToUint16(Buffer.concat(reg10));
+      const observed = ModbusClient.bufferToUint16(Buffer.concat(reg10));
 
       // Re-check the snapshot - if a concurrent write moved us to idle while
       // the read was in flight, bail rather than fight the user's intent.
       if (this._lastForceCmdValue !== expected) return;
 
-      if (observed42010 === 0) {
+      if (observed === 0) {
         this._pushModeEvent('force_revert_detected', {
           expected,
           observed: 0,
-          revert_kind: 'force_command',
           age_ms: Date.now() - this._lastForceCmdWrite,
         });
-        await this._autoRecoverForceCmd(slaveId, expected, 'force_command');
-        return;
-      }
-
-      // Step 2: 42010 still looks engaged. For force_soc the battery owns its
-      // own power - nothing more to check. For the other modes, watch the
-      // matching power register for a partial revert.
-      if (mode === 'force_soc') return;
-      const powerReg = expected === 2 ? 42021 : 42020;
-      const regPower = await this.modbus.readHoldingRegisters(slaveId, powerReg, 1);
-      const observedPower = ModbusClient.bufferToUint16(Buffer.concat(regPower));
-
-      if (this._lastForceCmdValue !== expected) return;
-
-      if (observedPower === 0) {
-        this._pushModeEvent('force_revert_detected', {
-          expected,
-          observed_42010: observed42010,
-          observed_power: 0,
-          power_register: powerReg,
-          revert_kind: 'power_register',
-          age_ms: Date.now() - this._lastForceCmdWrite,
-        });
-        await this._autoRecoverForceCmd(slaveId, expected, 'power_register');
+        await this._autoRecoverForceCmd(slaveId, expected);
       }
     } catch (error) {
       // Connection drops, transient Modbus errors etc. - slow poll will recover.
@@ -425,7 +397,7 @@ async writeDeviceName(name, config) {
     }
   }
 
-  async _autoRecoverForceCmd(slaveId, target, revertKind = 'force_command') {
+  async _autoRecoverForceCmd(slaveId, target) {
     if (!target) return;
     const mode = this.getCapabilityValue('force_charge_mode');
 
@@ -456,9 +428,9 @@ async writeDeviceName(name, config) {
       return;
     }
 
-    // target_power / force_charge / force_discharge.
-    // Always re-write the matching power register - it was either zeroed
-    // (power_register revert) or zeroed along with 42010 (force_command revert).
+    // target_power / force_charge / force_discharge: re-write the matching
+    // power register (firmware may have zeroed it together with 42010 on the
+    // revert), then re-assert 42010.
     const power = (target === 2)
       ? (this.getCapabilityValue('force_discharge_power') || Math.abs(this.getStoreValue('lastActivePower') || 0))
       : (this.getCapabilityValue('force_charge_power')    || Math.abs(this.getStoreValue('lastActivePower') || 0));
@@ -467,13 +439,7 @@ async writeDeviceName(name, config) {
       await this.modbus.writeSingleRegister(slaveId, powerReg, Math.min(2500, power));
     }
 
-    // Only re-write 42010 on a full force_command revert - for a power_register
-    // revert 42010 was still N, so writing it again would be the same kind of
-    // idempotent no-op that v1.3.5-1.3.7 already proved doesn't refresh
-    // anything.
-    if (revertKind === 'force_command') {
-      await this.modbus.writeSingleRegister(slaveId, 42010, target);
-    }
+    await this.modbus.writeSingleRegister(slaveId, 42010, target);
     this._lastForceCmdWrite = Date.now();
 
     // Reflect the recovery on the capability immediately rather than waiting
@@ -484,13 +450,8 @@ async writeDeviceName(name, config) {
       await this.setCapabilityValue('target_power', signedPower).catch(this.error);
     }
 
-    this.log(`Auto-recovery (${revertKind}): re-asserted ${powerReg}=${power}W${revertKind === 'force_command' ? ` + 42010=${target}` : ''} (mode=${mode})`);
-    this._pushModeEvent('force_recovered', {
-      reasserted: target,
-      mode,
-      revert_kind: revertKind,
-      register: revertKind === 'force_command' ? 42010 : powerReg,
-    });
+    this.log(`Auto-recovery: re-asserted 42010=${target} (mode=${mode}) after firmware revert`);
+    this._pushModeEvent('force_recovered', { reasserted: target, mode, register: 42010 });
   }
 
   //Update info that does not change often, we do this on device init, if you whant new data, just restart the app
