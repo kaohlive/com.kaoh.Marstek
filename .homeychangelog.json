@@ -100,5 +100,8 @@
   },
   "1.3.11": {
     "en": "Stability fix: revert v1.3.10's second fast-check Modbus read which overloaded the Marstek bus and caused device-wide timeouts. Keeps the race-fix and immediate capability update from v1.3.10."
+  },
+  "1.3.12": {
+    "en": "Serialize all Modbus operations through a per-client mutex. Prevents user-driven writes from colliding with the slow poll on the TCP connection, which on some setups caused minute-long timeout cascades."
   }
 }

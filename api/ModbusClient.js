@@ -16,6 +16,31 @@ class ModbusClient extends EventEmitter {
     this.reconnectDelay = 5000; // Start with 5 seconds
     this.maxReconnectDelay = 60000; // Max 60 seconds
     this.isReconnecting = false;
+    // Promise-chain mutex: every wire-touching call (read/write) goes through
+    // _serialize() so two operations can never be in flight on the same TCP
+    // connection. Without this, a slow-poll read and a user-driven write can
+    // hit the modbus-serial client concurrently, corrupting response framing
+    // and triggering a cascade of TransactionTimedOutError. Marstek firmware
+    // is bus-load sensitive enough that even brief overlap kills it for
+    // ~minutes (3-retry cascade @ ~5s timeout = ~15s per failed call).
+    this._busy = Promise.resolve();
+  }
+
+  // Serializes wire-touching operations against this client. Acquires by
+  // awaiting the previous tail; releases when fn() resolves or rejects so the
+  // mutex is never held past the actual operation. Retry loops inside the
+  // wrapped fn intentionally stay under the lock - releasing between retries
+  // would let another caller jump in mid-recovery.
+  async _serialize(fn) {
+    const prev = this._busy;
+    let release;
+    this._busy = new Promise((resolve) => { release = resolve; });
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
   }
 
   async connect(config) {
@@ -174,63 +199,69 @@ class ModbusClient extends EventEmitter {
   }
 
   async readHoldingRegisters(slaveId, address, quantity, retries = 2) {
-    if (!this.connected || !this.client) {
-      throw new Error('Modbus not connected');
-    }
+    return this._serialize(async () => {
+      if (!this.connected || !this.client) {
+        throw new Error('Modbus not connected');
+      }
 
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        this.client.setID(slaveId || 1);
-        const response = await this.client.readHoldingRegisters(address, quantity);
-        // Preserve the modbus-stream return shape (array of buffers) so
-        // existing device.js callers that do Buffer.concat([...]) keep working.
-        return [response.buffer];
-      } catch (err) {
-        if (attempt < retries && this.connected) {
-          console.log(`Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } else {
-          throw err;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          this.client.setID(slaveId || 1);
+          const response = await this.client.readHoldingRegisters(address, quantity);
+          // Preserve the modbus-stream return shape (array of buffers) so
+          // existing device.js callers that do Buffer.concat([...]) keep working.
+          return [response.buffer];
+        } catch (err) {
+          if (attempt < retries && this.connected) {
+            console.log(`Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } else {
+            throw err;
+          }
         }
       }
-    }
+    });
   }
 
   async writeSingleRegister(slaveId, address, value, retries = 2) {
-    if (!this.connected || !this.client) {
-      throw new Error('Modbus not connected');
-    }
+    return this._serialize(async () => {
+      if (!this.connected || !this.client) {
+        throw new Error('Modbus not connected');
+      }
 
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        this.client.setID(slaveId || 1);
-        await this.client.writeRegister(address, value);
-        return;
-      } catch (err) {
-        if (attempt < retries && this.connected) {
-          console.log(`Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
-          await new Promise(resolve => setTimeout(resolve, 500));
-        } else {
-          throw err;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          this.client.setID(slaveId || 1);
+          await this.client.writeRegister(address, value);
+          return;
+        } catch (err) {
+          if (attempt < retries && this.connected) {
+            console.log(`Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } else {
+            throw err;
+          }
         }
       }
-    }
+    });
   }
 
   async writeMultipleRegisters(slaveId, address, values) {
-    if (!this.connected || !this.client) {
-      throw new Error('Modbus not connected');
-    }
+    return this._serialize(async () => {
+      if (!this.connected || !this.client) {
+        throw new Error('Modbus not connected');
+      }
 
-    // modbus-serial expects an array of 16-bit integers. Accept either numbers
-    // or 2-byte Buffers for backwards compat with the old Buffer[] API.
-    const regs = values.map((v) => {
-      if (Buffer.isBuffer(v)) return v.readUInt16BE(0);
-      return v;
+      // modbus-serial expects an array of 16-bit integers. Accept either numbers
+      // or 2-byte Buffers for backwards compat with the old Buffer[] API.
+      const regs = values.map((v) => {
+        if (Buffer.isBuffer(v)) return v.readUInt16BE(0);
+        return v;
+      });
+
+      this.client.setID(slaveId || 1);
+      await this.client.writeRegisters(address, regs);
     });
-
-    this.client.setID(slaveId || 1);
-    await this.client.writeRegisters(address, regs);
   }
 
   isConnected() {
