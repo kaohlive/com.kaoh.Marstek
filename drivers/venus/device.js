@@ -173,6 +173,13 @@ class VenusBatteryDevice extends Homey.Device {
       }
     }
 
+    // Re-arm the fast-check timer when the interval changes (no-op when the
+    // loop is disabled via enable_force_recovery).
+    if (changedKeys.includes('fast_check_interval') && newSettings.enable_force_recovery !== false) {
+      this.log(`Fast-check interval changed to ${newSettings.fast_check_interval}ms - restarting loop`);
+      this.startFastForceCheck();
+    }
+
     // Handle charging cutoff SOC change
     if (changedKeys.includes('charging_cutoff_soc')) {
       await this.setChargingCutoffSoc(newSettings.charging_cutoff_soc);
@@ -370,7 +377,9 @@ async writeDeviceName(name, config) {
     // Reset backoff state on (re)start.
     this._fastCheckConsecutiveErrors = 0;
     this._fastCheckPausedUntil = 0;
-    this.fastForceCheckInterval = setInterval(() => this._fastForceCheck(), 1000);
+    const interval = this.settings.fast_check_interval || 1000;
+    this.log(`Fast force-check starting at ${interval}ms interval`);
+    this.fastForceCheckInterval = setInterval(() => this._fastForceCheck(), interval);
   }
 
   stopFastForceCheck() {

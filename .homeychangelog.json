@@ -106,5 +106,8 @@
   },
   "1.3.13": {
     "en": "Add an Auto-recovery opt-out in device settings for users still seeing Modbus instability, plus an automatic 30s back-off after 3 consecutive fast-check errors so a stressed bus is not hammered further."
+  },
+  "1.3.14": {
+    "en": "Make the fast-check interval configurable in device settings (default 1000ms, range 500-30000ms). Lets users tune the trade-off between recovery latency and Modbus bus load without fully disabling Auto-recovery."
   }
 }
