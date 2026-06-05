@@ -297,6 +297,19 @@
           "value": 3,
           "min": 1,
           "max": 10
+        },
+        {
+          "id": "enable_force_recovery",
+          "type": "checkbox",
+          "label": {
+            "en": "Auto-recover force-command reverts",
+            "nl": "Automatisch herstel van force-command reverts"
+          },
+          "hint": {
+            "en": "When on, a 1s fast-check loop watches register 42010 and re-asserts the force command immediately if the firmware reverts it (bounds 0W dips to ~1s). Turn off if you experience Modbus connection instability - the recovery loop adds load to the bus that some Marstek firmware versions handle poorly. With this off the battery will still see periodic 0W dips when the firmware countdown expires, but the device connection is more stable.",
+            "nl": "Als aan, controleert een snelle 1s-loop register 42010 en herstelt deze direct als de firmware de force-command laat vallen (begrenst 0W dips tot ~1s). Schakel uit als je Modbus verbindingsproblemen ervaart - de herstelloop voegt belasting toe aan de bus die sommige Marstek firmware versies slecht aankunnen. Met deze uit zal de batterij nog steeds periodieke 0W dips ervaren als de firmware-countdown afloopt, maar is de verbinding stabieler."
+          },
+          "value": true
         }
       ]
     },

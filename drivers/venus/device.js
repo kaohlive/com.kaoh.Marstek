@@ -162,6 +162,17 @@ class VenusBatteryDevice extends Homey.Device {
       this.restartPolling();
     }
 
+    // Toggle the fast force-check loop live when the user flips the opt-out.
+    if (changedKeys.includes('enable_force_recovery')) {
+      if (newSettings.enable_force_recovery === false) {
+        this.log('Auto-recovery disabled via settings - stopping fast force-check');
+        this.stopFastForceCheck();
+      } else {
+        this.log('Auto-recovery enabled via settings - starting fast force-check');
+        this.startFastForceCheck();
+      }
+    }
+
     // Handle charging cutoff SOC change
     if (changedKeys.includes('charging_cutoff_soc')) {
       await this.setChargingCutoffSoc(newSettings.charging_cutoff_soc);
@@ -349,6 +360,16 @@ async writeDeviceName(name, config) {
   // interleave reads on the same connection.
   startFastForceCheck() {
     this.stopFastForceCheck();
+    // Opt-out: users who experience Modbus instability can disable the
+    // recovery loop via device settings. Without it the battery still sees
+    // periodic 0W dips, but bus load drops back to v1.3.4 levels.
+    if (this.settings.enable_force_recovery === false) {
+      this.log('Auto-recovery disabled in settings - fast force-check not started');
+      return;
+    }
+    // Reset backoff state on (re)start.
+    this._fastCheckConsecutiveErrors = 0;
+    this._fastCheckPausedUntil = 0;
     this.fastForceCheckInterval = setInterval(() => this._fastForceCheck(), 1000);
   }
 
@@ -362,6 +383,12 @@ async writeDeviceName(name, config) {
   async _fastForceCheck() {
     if (this._isDeleted) return;
     if (this._modbusBusy) return;
+    // Backoff: after a run of Modbus errors in the fast-check, stop hammering
+    // the bus for FAST_CHECK_BACKOFF_MS. If the device is genuinely stressed,
+    // piling on more 1Hz reads makes it worse - let the slow poll re-establish
+    // contact at its own cadence first.
+    if (this._fastCheckPausedUntil && Date.now() < this._fastCheckPausedUntil) return;
+
     // Only meaningful while we are actively driving the battery.
     if (this.getCapabilityValue('target_power_mode') !== 'homey') return;
     // Snapshot at the gate so a concurrent capability write (e.g. user setting
@@ -381,6 +408,9 @@ async writeDeviceName(name, config) {
       // the read was in flight, bail rather than fight the user's intent.
       if (this._lastForceCmdValue !== expected) return;
 
+      // Read succeeded - clear any accumulated error count.
+      this._fastCheckConsecutiveErrors = 0;
+
       if (observed === 0) {
         this._pushModeEvent('force_revert_detected', {
           expected,
@@ -391,7 +421,20 @@ async writeDeviceName(name, config) {
       }
     } catch (error) {
       // Connection drops, transient Modbus errors etc. - slow poll will recover.
-      this.log('Fast force-check skipped (will retry):', error.message);
+      this._fastCheckConsecutiveErrors = (this._fastCheckConsecutiveErrors || 0) + 1;
+      const FAST_CHECK_ERROR_THRESHOLD = 3;
+      const FAST_CHECK_BACKOFF_MS = 30000;
+      if (this._fastCheckConsecutiveErrors >= FAST_CHECK_ERROR_THRESHOLD) {
+        this._fastCheckPausedUntil = Date.now() + FAST_CHECK_BACKOFF_MS;
+        this._fastCheckConsecutiveErrors = 0;
+        this.log(`Fast force-check paused ${FAST_CHECK_BACKOFF_MS}ms after ${FAST_CHECK_ERROR_THRESHOLD} consecutive errors (last: ${error.message})`);
+        this._pushModeEvent('fast_check_backoff', {
+          paused_for_ms: FAST_CHECK_BACKOFF_MS,
+          last_error: error.message,
+        });
+      } else {
+        this.log('Fast force-check skipped (will retry):', error.message);
+      }
     } finally {
       this._modbusBusy = false;
     }
