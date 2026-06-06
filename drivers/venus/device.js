@@ -159,7 +159,7 @@ class VenusBatteryDevice extends Homey.Device {
 
     // Restart polling if connection settings changed
     if (changedKeys.includes('ip') || changedKeys.includes('port') || changedKeys.includes('poll_interval')) {
-      this.restartPolling();
+      await this.restartPolling();
     }
 
     // Toggle the fast force-check loop live when the user flips the opt-out.
@@ -278,23 +278,29 @@ async writeDeviceName(name, config) {
     if (this.modbus.isConnected()) {
       return true;
     }
-
-    try {
-      const success = await this.modbus.connect({
-        ip: this.settings.ip,
-        port: this.settings.port || 502
-      });
-      
-      return success;
-    } catch (error) {
-      this.log('Modbus connection failed:', error);
-      return false;
-    }
+    // Belt-and-braces: ModbusClient.connect() is already idempotent, but
+    // caching at this layer too means parallel callers don't even allocate
+    // a connect-attempt config object when one is already in flight. Cheap.
+    if (this._modbusConnectPromise) return this._modbusConnectPromise;
+    this._modbusConnectPromise = (async () => {
+      try {
+        return await this.modbus.connect({
+          ip: this.settings.ip,
+          port: this.settings.port || 502,
+        });
+      } catch (error) {
+        this.log('Modbus connection failed:', error);
+        return false;
+      }
+    })().finally(() => {
+      this._modbusConnectPromise = null;
+    });
+    return this._modbusConnectPromise;
   }
 
-  disconnectModbus() {
+  async disconnectModbus() {
     if (this.modbus) {
-      this.modbus.disconnect();
+      await this.modbus.disconnect();
       this.log('Disconnected from Modbus device');
     }
   }
@@ -339,9 +345,13 @@ async writeDeviceName(name, config) {
     this.stopFastForceCheck();
   }
 
-  restartPolling() {
+  async restartPolling() {
     this.stopPolling();
-    this.disconnectModbus();
+    // Wait for the old socket to be fully closed before allowing the next
+    // pollData (which will trigger a fresh connect). Skipping the await lets
+    // the new connect race the previous FIN/ACK and can leave two sockets
+    // briefly contending for the Marstek's single native-Modbus client slot.
+    await this.disconnectModbus();
     this.startPolling();
   }
 
@@ -1767,7 +1777,11 @@ async writeDeviceName(name, config) {
     // Set flag immediately to prevent any pending poll operations
     this._isDeleted = true;
     this.stopPolling();
-    this.disconnectModbus();
+    // Await the disconnect so the TCP socket is fully closed before Homey
+    // unloads the device instance. Otherwise the Marstek can still see us
+    // as a connected client for a while, blocking a fresh add immediately
+    // after a delete.
+    await this.disconnectModbus();
   }
 
   // ============================================

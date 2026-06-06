@@ -109,5 +109,8 @@
   },
   "1.3.14": {
     "en": "Make the fast-check interval configurable in device settings (default 1000ms, range 500-30000ms). Lets users tune the trade-off between recovery latency and Modbus bus load without fully disabling Auto-recovery."
+  },
+  "1.3.15": {
+    "en": "Connection lifecycle hygiene: idempotent connect (parallel callers share a single in-flight attempt instead of each opening a TCP socket), properly awaited close on disconnect with a brief TCP grace before reconnecting. Prevents orphaned sockets from holding the Marstek's single native-Modbus client slot."
   }
 }
