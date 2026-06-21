@@ -115,5 +115,8 @@
   },
   "1.3.16": {
     "en": "Diagnostic API endpoints (read/write/dump from the settings page) now reuse the device's existing Modbus connection instead of opening a parallel socket. Removes the last self-collision path on Marstek devices with single-client native Modbus TCP."
+  },
+  "1.3.17": {
+    "en": "Hot-path regression fix: remove the SOC-drift-triggered 42011 write that was firing on every single target_power call (because measured SOC nearly always differs from a previously stored target by more than 1%). The dedicated force_soc recovery path introduced in v1.3.8 already covers what this defensive write was meant to do. Restores v1.3.5-level Modbus bus load for orchestrator-driven setups."
   }
 }

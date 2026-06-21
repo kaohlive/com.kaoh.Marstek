@@ -1704,15 +1704,18 @@ async writeDeviceName(name, config) {
       // target_power and force_soc are mutually exclusive force strategies, but
       // on the Marstek force_soc is driven by its own register (42011 SOC target)
       // that keeps running until overwritten — writing 42010 alone does NOT
-      // cancel it. Only neutralize 42011 when force_soc was actually active, to
-      // avoid the extra Modbus roundtrip on every normal target_power write.
+      // cancel it. Neutralize 42011 exactly once when transitioning OUT of
+      // force_soc; after that the capability value flips to 'target_power' and
+      // we don't touch 42011 again from the hot path. (A previous drift-based
+      // condition fired on every target_power write whenever the current SOC
+      // differed from the stored target by >1% - which is almost always - and
+      // turned out to be redundant once v1.3.8 added a dedicated force_soc
+      // recovery path in _autoRecoverForceCmd. Removed in v1.3.17 because on
+      // load-sensitive Marstek firmware that extra per-write 42011 write was
+      // pushing the bus over its breaking point.)
       const previousForceMode = this.getCapabilityValue('force_charge_mode');
-      const currentSocTarget = this.getCapabilityValue('force_charge_target');
       const currentSoc = this.getCapabilityValue('measure_battery');
-      const socTargetDrift = typeof currentSocTarget === 'number'
-        && typeof currentSoc === 'number'
-        && Math.abs(currentSocTarget - currentSoc) > 1;
-      if ((previousForceMode === 'force_soc' || socTargetDrift)
+      if (previousForceMode === 'force_soc'
           && typeof currentSoc === 'number' && currentSoc > 0) {
         const clampedSoc = Math.max(11, Math.min(100, Math.round(currentSoc)));
         await this.modbus.writeSingleRegister(slaveId, 42011, clampedSoc);
