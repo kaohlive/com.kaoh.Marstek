@@ -56,6 +56,12 @@ class VenusBatteryDevice extends Homey.Device {
     this._lastForceCmdWrite = 0;
     this._modbusBusy = false;
 
+    // SOC value we last wrote to register 42011 as a force_soc neutralization.
+    // Used as the baseline for detecting "real" drift before re-neutralizing,
+    // instead of comparing currentSoc against the user-selected SOC target
+    // capability (which would never match and would fire on every call).
+    this._neutralizedSocTarget = undefined;
+
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
@@ -1703,22 +1709,29 @@ async writeDeviceName(name, config) {
 
       // target_power and force_soc are mutually exclusive force strategies, but
       // on the Marstek force_soc is driven by its own register (42011 SOC target)
-      // that keeps running until overwritten — writing 42010 alone does NOT
-      // cancel it. Neutralize 42011 exactly once when transitioning OUT of
-      // force_soc; after that the capability value flips to 'target_power' and
-      // we don't touch 42011 again from the hot path. (A previous drift-based
-      // condition fired on every target_power write whenever the current SOC
-      // differed from the stored target by >1% - which is almost always - and
-      // turned out to be redundant once v1.3.8 added a dedicated force_soc
-      // recovery path in _autoRecoverForceCmd. Removed in v1.3.17 because on
-      // load-sensitive Marstek firmware that extra per-write 42011 write was
-      // pushing the bus over its breaking point.)
+      // that keeps running until overwritten - writing 42010 alone does NOT
+      // cancel it, and a stale 42011 from a previous force_soc session will
+      // make the firmware silently override our target_power writes.
+      //
+      // We re-write 42011 = currentSoc to keep force_soc neutralized (target
+      // equals current = no action). Drift compared against _neutralizedSocTarget
+      // (the SOC we last wrote to 42011), NOT against the force_charge_target
+      // capability - the capability holds the user's selected target which is
+      // almost never equal to currentSoc, so comparing against it would fire
+      // on every single target_power call and storm the bus (v1.3.16 regression).
+      // Comparing against the last-written value means we fire only when
+      // currentSoc has actually drifted >1% since the last neutralization,
+      // i.e. every ~5-10 min under normal load, not every single call.
       const previousForceMode = this.getCapabilityValue('force_charge_mode');
       const currentSoc = this.getCapabilityValue('measure_battery');
-      if (previousForceMode === 'force_soc'
+      const socTargetDrift = typeof this._neutralizedSocTarget === 'number'
+        && typeof currentSoc === 'number'
+        && Math.abs(this._neutralizedSocTarget - currentSoc) > 1;
+      if ((previousForceMode === 'force_soc' || socTargetDrift)
           && typeof currentSoc === 'number' && currentSoc > 0) {
         const clampedSoc = Math.max(11, Math.min(100, Math.round(currentSoc)));
         await this.modbus.writeSingleRegister(slaveId, 42011, clampedSoc);
+        this._neutralizedSocTarget = clampedSoc;
         this.log(`Neutralized force_soc by writing current SOC (${clampedSoc}%) to 42011`);
       }
 
