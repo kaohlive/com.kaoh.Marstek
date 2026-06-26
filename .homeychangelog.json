@@ -121,5 +121,8 @@
   },
   "1.3.18": {
     "en": "Bring back continuous force_soc neutralization (v1.3.17 broke EMS setups where stale 42011 silently overrode target_power writes), but compare drift against the value we last wrote ourselves instead of the user-selected target capability. Fires ~once per 5-10 minutes under normal load instead of every call - ~300x lower bus load than the v1.3.16 storm while keeping EMS writes effective."
+  },
+  "1.3.19": {
+    "en": "Stability + diagnostics: every Modbus error log line is now prefixed with a category tag ([TCP/REFUSED], [TCP/RESET], [Modbus/PROTOCOL_TIMEOUT], [Modbus/NO_RESPONSE], etc.) so it is obvious whether a timeout is a local network/config issue or device-side. Reconnect no longer gives up after 10 attempts - retries forever with backoff capped at 5 minutes so a battery that comes back hours later auto-reconnects without needing an app restart. After 3 consecutive protocol timeouts we proactively force-reconnect to clear the modbus-serial transaction queue (also fixes the slow memory leak on long-disconnected devices). And Homey API calls that previously fired-and-forgot (setSettings, setAvailable, setUnavailable) now swallow rejections after a device is deleted - removes the unhandledRejection noise."
   }
 }
