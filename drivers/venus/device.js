@@ -38,6 +38,30 @@ class VenusBatteryDevice extends Homey.Device {
     this._modeEventSeq = 0;
     this._pendingWorkModeWrites = []; // tracks unmatched writes to compute ack-latency on poll
 
+    // Tracking for the force-command auto-recovery: the Marstek's force-command
+    // (register 42010) is subject to a firmware power-countdown that periodically
+    // reverts it to 0 mid-session. Idempotent re-writes are ack'd but do not
+    // refresh the countdown - only real transitions do, but toggling ourselves
+    // induces the very dip we are preventing. Instead we detect unsolicited
+    // reverts on a fast loop and re-assert immediately.
+    //   _lastForceCmdValue : last value we wrote to 42010 (0/1/2, or undefined
+    //                        if never written this session). Used to decide
+    //                        whether a current observed 0 is a revert worth
+    //                        recovering from, or an intentional idle.
+    //   _lastForceCmdWrite : timestamp of that write (for diagnostics).
+    //   _modbusBusy        : single mutex shared by the slow poll and the fast
+    //                        force-check loop so they cannot interleave reads
+    //                        on the same Modbus connection.
+    this._lastForceCmdValue = undefined;
+    this._lastForceCmdWrite = 0;
+    this._modbusBusy = false;
+
+    // SOC value we last wrote to register 42011 as a force_soc neutralization.
+    // Used as the baseline for detecting "real" drift before re-neutralizing,
+    // instead of comparing currentSoc against the user-selected SOC target
+    // capability (which would never match and would fire on every call).
+    this._neutralizedSocTarget = undefined;
+
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
@@ -83,6 +107,177 @@ class VenusBatteryDevice extends Homey.Device {
     this._modeEvents = [];
     this._pendingWorkModeWrites = [];
     return true;
+  }
+
+  // Wrappers around Homey API calls that can reject with "Device not found"
+  // after a user delete-while-busy. Without the catch the rejection propagates
+  // as an unhandledRejection on the app process (visible in support logs and a
+  // long-term stability risk). After delete we go quiet to avoid noisy logs.
+  _setSettingsSafe(settings) {
+    return this.setSettings(settings).catch((err) => {
+      if (!this._isDeleted) this.log('setSettings failed:', err.message);
+    });
+  }
+  _setUnavailableSafe(reason) {
+    return this.setUnavailable(reason).catch((err) => {
+      if (!this._isDeleted) this.log('setUnavailable failed:', err.message);
+    });
+  }
+  _setAvailableSafe() {
+    return this.setAvailable().catch((err) => {
+      if (!this._isDeleted) this.log('setAvailable failed:', err.message);
+    });
+  }
+
+  // ============================================
+  // DIAGNOSTIC API HELPERS (called via app.js endpoints)
+  // ============================================
+  // These delegate diagnostic reads/writes through this device's own
+  // ModbusClient instance - which is already serialized by the v1.3.12 mutex
+  // and lifecycle-protected by v1.3.15. Earlier versions had a separate
+  // ModbusClient instance on app.js (testModbus) which opened a parallel TCP
+  // socket to the same device - on Marstek hardware with native Modbus TCP
+  // (one client slot only) this competed with the slow poll for the slot and
+  // showed up in field logs as alternating ECONNREFUSED + TransactionTimedOutError.
+
+  async apiReadRegister(address, count = 1) {
+    if (!await this.connectModbus()) {
+      throw new Error('Modbus connection failed');
+    }
+    const slaveId = this.settings.slave_id || 1;
+    const result = await this.modbus.readHoldingRegisters(slaveId, address, count);
+    const buffer = Buffer.concat(result);
+    const response = {
+      success: true,
+      address,
+      count,
+      raw: Array.from(buffer),
+      uint16: ModbusClient.bufferToUint16(buffer),
+      int16: ModbusClient.bufferToInt16(buffer),
+      hex: buffer.toString('hex').toUpperCase(),
+    };
+    if (count >= 2) {
+      response.uint32 = ModbusClient.bufferToUint32(buffer);
+      response.int32 = ModbusClient.bufferToInt32(buffer);
+    }
+    return response;
+  }
+
+  async apiWriteRegister(address, value) {
+    if (!await this.connectModbus()) {
+      throw new Error('Modbus connection failed');
+    }
+    const slaveId = this.settings.slave_id || 1;
+    await this.modbus.writeSingleRegister(slaveId, address, value);
+    this.log(`API write: register ${address} = ${value}`);
+    return { success: true, address, value };
+  }
+
+  async apiPollState() {
+    if (!await this.connectModbus()) {
+      throw new Error('Modbus connection failed');
+    }
+    const slaveId = this.settings.slave_id || 1;
+    const data = {
+      deviceInfo: {},
+      batteryState: {},
+      systemState: {},
+      controlRegisters: {},
+      protectionSettings: {},
+      alarms: {},
+    };
+
+    const safeRead = async (label, addr, count, transform) => {
+      try {
+        const r = await this.modbus.readHoldingRegisters(slaveId, addr, count);
+        return transform(r);
+      } catch (e) {
+        return 'Error: ' + e.message;
+      }
+    };
+
+    // Device info
+    data.deviceInfo['31000_device_name'] = await safeRead('name', 31000, 10,
+      (r) => ModbusClient.bufferToString(r));
+    data.deviceInfo['31101_firmware'] = await safeRead('firmware', 31101, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.deviceInfo['32105_total_energy_kwh'] = await safeRead('energy', 32105, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.001);
+
+    // Battery state
+    data.batteryState['32100_battery_voltage_V'] = await safeRead('battV', 32100, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.01);
+    data.batteryState['32101_battery_current_A'] = await safeRead('battA', 32101, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.01);
+    data.batteryState['32102_battery_power_W'] = await safeRead('battW', 32102, 2,
+      (r) => ModbusClient.bufferToInt32(Buffer.concat(r)));
+    data.batteryState['32104_soc_percent'] = await safeRead('soc', 32104, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.batteryState['32200_ac_voltage_V'] = await safeRead('acV', 32200, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.1);
+    data.batteryState['32202_ac_power_W'] = await safeRead('acW', 32202, 2,
+      (r) => ModbusClient.bufferToInt32(Buffer.concat(r)));
+    data.batteryState['33000_total_charge_energy_kWh'] = await safeRead('chgE', 33000, 2,
+      (r) => ModbusClient.bufferToUint32(Buffer.concat(r)) * 0.01);
+    data.batteryState['33002_total_discharge_energy_kWh'] = await safeRead('disE', 33002, 2,
+      (r) => ModbusClient.bufferToInt32(Buffer.concat(r)) * 0.01);
+    data.batteryState['35000_internal_temp_C'] = await safeRead('tempInt', 35000, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.1);
+    data.batteryState['35001_mos1_temp_C'] = await safeRead('tempMos1', 35001, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.1);
+    data.batteryState['35002_mos2_temp_C'] = await safeRead('tempMos2', 35002, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.1);
+
+    // System state
+    const stateNames = ['sleep', 'standby', 'charge', 'discharge', 'backup', 'update', 'bypass'];
+    data.systemState['35100_inverter_state'] = await safeRead('inv', 35100, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, name: stateNames[v] || 'unknown' };
+    });
+
+    // Control registers
+    data.controlRegisters['41200_backup_mode'] = await safeRead('backup', 41200, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, enabled: v === 0 };
+    });
+    data.controlRegisters['42000_rs485_control'] = await safeRead('rs485', 42000, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, hex: '0x' + v.toString(16).toUpperCase(), modbus_enabled: v === 21930 };
+    });
+    const forceModeNames = ['none', 'force_charge', 'force_discharge'];
+    data.controlRegisters['42010_force_mode'] = await safeRead('fmode', 42010, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, name: forceModeNames[v] || 'unknown' };
+    });
+    data.controlRegisters['42011_charge_to_soc_percent'] = await safeRead('fsoc', 42011, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.controlRegisters['42020_force_charge_power_W'] = await safeRead('fcp', 42020, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.controlRegisters['42021_force_discharge_power_W'] = await safeRead('fdp', 42021, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    const workModeNames = ['manual', 'anti_feed', 'trade_mode', 'control_mode'];
+    data.controlRegisters['43000_user_work_mode'] = await safeRead('wmode', 43000, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, name: workModeNames[v] || 'unknown (' + v + ')' };
+    });
+
+    // Protection
+    data.protectionSettings['44000_charging_cutoff_soc_percent'] = await safeRead('ccs', 44000, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.1);
+    data.protectionSettings['44001_discharging_cutoff_soc_percent'] = await safeRead('dcs', 44001, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.1);
+    data.protectionSettings['44002_max_charge_power_W'] = await safeRead('mcp', 44002, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.protectionSettings['44003_max_discharge_power_W'] = await safeRead('mdp', 44003, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+
+    // Alarms
+    data.alarms['36000_alarm_code'] = await safeRead('alarm', 36000, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.alarms['36100_fault_word'] = await safeRead('fault', 36100, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+
+    return { success: true, data };
   }
 
   async repairCapabilities()
@@ -141,7 +336,25 @@ class VenusBatteryDevice extends Homey.Device {
 
     // Restart polling if connection settings changed
     if (changedKeys.includes('ip') || changedKeys.includes('port') || changedKeys.includes('poll_interval')) {
-      this.restartPolling();
+      await this.restartPolling();
+    }
+
+    // Toggle the fast force-check loop live when the user flips the opt-out.
+    if (changedKeys.includes('enable_force_recovery')) {
+      if (newSettings.enable_force_recovery === false) {
+        this.log('Auto-recovery disabled via settings - stopping fast force-check');
+        this.stopFastForceCheck();
+      } else {
+        this.log('Auto-recovery enabled via settings - starting fast force-check');
+        this.startFastForceCheck();
+      }
+    }
+
+    // Re-arm the fast-check timer when the interval changes (no-op when the
+    // loop is disabled via enable_force_recovery).
+    if (changedKeys.includes('fast_check_interval') && newSettings.enable_force_recovery !== false) {
+      this.log(`Fast-check interval changed to ${newSettings.fast_check_interval}ms - restarting loop`);
+      this.startFastForceCheck();
     }
 
     // Handle charging cutoff SOC change
@@ -222,7 +435,7 @@ async writeDeviceName(name, config) {
 
   setupModbusHandlers() {
     this.modbus.on('connect', () => {
-      this.setAvailable();
+      this._setAvailableSafe();
       this.consecutiveErrors = 0; // Reset error counter on successful connection
       this.log('Connected to Modbus device');
       this.processDeviceStaticInfo(this.settings.slave_id || 1);
@@ -242,37 +455,63 @@ async writeDeviceName(name, config) {
     if (this.modbus.isConnected()) {
       return true;
     }
-
-    try {
-      const success = await this.modbus.connect({
-        ip: this.settings.ip,
-        port: this.settings.port || 502
-      });
-      
-      return success;
-    } catch (error) {
-      this.log('Modbus connection failed:', error);
-      return false;
-    }
+    // Belt-and-braces: ModbusClient.connect() is already idempotent, but
+    // caching at this layer too means parallel callers don't even allocate
+    // a connect-attempt config object when one is already in flight. Cheap.
+    if (this._modbusConnectPromise) return this._modbusConnectPromise;
+    this._modbusConnectPromise = (async () => {
+      try {
+        return await this.modbus.connect({
+          ip: this.settings.ip,
+          port: this.settings.port || 502,
+        });
+      } catch (error) {
+        this.log('Modbus connection failed:', error);
+        return false;
+      }
+    })().finally(() => {
+      this._modbusConnectPromise = null;
+    });
+    return this._modbusConnectPromise;
   }
 
-  disconnectModbus() {
+  async disconnectModbus() {
     if (this.modbus) {
-      this.modbus.disconnect();
+      await this.modbus.disconnect();
       this.log('Disconnected from Modbus device');
     }
   }
 
   startPolling() {
     this.stopPolling();
-    
+
     const interval = this.settings.poll_interval || 5000;
+    // Overlap guard: a full pollData cycle currently runs ~20-25 sequential
+    // Modbus reads (~1-2s). If the next tick fires while the previous is still
+    // running, two parallel reads would corrupt the response stream. Skip the
+    // tick when the bus is busy (slow poll OR fast force-check holding the lock).
     this.pollInterval = setInterval(async () => {
-      await this.pollData();
+      if (this._modbusBusy) return;
+      this._modbusBusy = true;
+      try {
+        await this.pollData();
+      } finally {
+        this._modbusBusy = false;
+      }
     }, interval);
-    
-    // Initial poll
-    setTimeout(() => this.pollData(), 1000);
+
+    // Initial poll (also lock-guarded)
+    setTimeout(async () => {
+      if (this._modbusBusy) return;
+      this._modbusBusy = true;
+      try {
+        await this.pollData();
+      } finally {
+        this._modbusBusy = false;
+      }
+    }, 1000);
+
+    this.startFastForceCheck();
   }
 
   stopPolling() {
@@ -280,12 +519,178 @@ async writeDeviceName(name, config) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
     }
+    this.stopFastForceCheck();
   }
 
-  restartPolling() {
+  async restartPolling() {
     this.stopPolling();
-    this.disconnectModbus();
+    // Wait for the old socket to be fully closed before allowing the next
+    // pollData (which will trigger a fresh connect). Skipping the await lets
+    // the new connect race the previous FIN/ACK and can leave two sockets
+    // briefly contending for the Marstek's single native-Modbus client slot.
+    await this.disconnectModbus();
     this.startPolling();
+  }
+
+  // Fast force-check loop. Once per second, read the force command register
+  // (42010, a single-register Modbus read ~50-100ms) and compare to what we
+  // last wrote. If the firmware power-countdown reverted us to 0, re-assert.
+  //
+  // v1.3.10 added a second read here (42020/42021) for a "partial revert"
+  // hypothesis. Field log on firmware 147.114.104.116 showed device-wide
+  // Modbus timeouts under the doubled fast-check load. The Marstek's bus is
+  // load-sensitive, so we are back to one read per tick. The partial-revert
+  // hypothesis turned out to be wrong anyway: the chart dips come from 42010
+  // going to 0 (line 909 derives target_power from forceModeStr), which this
+  // single-read check already catches.
+  //
+  // Why this is non-paradoxical: we are reacting to a revert that already
+  // happened, not preventing one by inducing it. Idempotent re-writes proven
+  // not to refresh the countdown (v1.3.5-1.3.7 field data) - the only way to
+  // restart it from outside is a real 0->N transition, which the firmware
+  // itself just performed. So writing back N is exactly what is needed.
+  //
+  // Shares the _modbusBusy mutex with the slow poll so the two timers cannot
+  // interleave reads on the same connection.
+  startFastForceCheck() {
+    this.stopFastForceCheck();
+    // Opt-out: users who experience Modbus instability can disable the
+    // recovery loop via device settings. Without it the battery still sees
+    // periodic 0W dips, but bus load drops back to v1.3.4 levels.
+    if (this.settings.enable_force_recovery === false) {
+      this.log('Auto-recovery disabled in settings - fast force-check not started');
+      return;
+    }
+    // Reset backoff state on (re)start.
+    this._fastCheckConsecutiveErrors = 0;
+    this._fastCheckPausedUntil = 0;
+    const interval = this.settings.fast_check_interval || 1000;
+    this.log(`Fast force-check starting at ${interval}ms interval`);
+    this.fastForceCheckInterval = setInterval(() => this._fastForceCheck(), interval);
+  }
+
+  stopFastForceCheck() {
+    if (this.fastForceCheckInterval) {
+      clearInterval(this.fastForceCheckInterval);
+      this.fastForceCheckInterval = null;
+    }
+  }
+
+  async _fastForceCheck() {
+    if (this._isDeleted) return;
+    if (this._modbusBusy) return;
+    // Backoff: after a run of Modbus errors in the fast-check, stop hammering
+    // the bus for FAST_CHECK_BACKOFF_MS. If the device is genuinely stressed,
+    // piling on more 1Hz reads makes it worse - let the slow poll re-establish
+    // contact at its own cadence first.
+    if (this._fastCheckPausedUntil && Date.now() < this._fastCheckPausedUntil) return;
+
+    // Only meaningful while we are actively driving the battery.
+    if (this.getCapabilityValue('target_power_mode') !== 'homey') return;
+    // Snapshot at the gate so a concurrent capability write (e.g. user setting
+    // target_power=0 mid-check) cannot make us log a stale-expected event or
+    // recover something the user just intentionally stopped.
+    const expected = this._lastForceCmdValue;
+    if (!expected) return;
+    if (!this.modbus) return;
+
+    this._modbusBusy = true;
+    try {
+      const slaveId = this.settings.slave_id || 1;
+      const reg10 = await this.modbus.readHoldingRegisters(slaveId, 42010, 1);
+      const observed = ModbusClient.bufferToUint16(Buffer.concat(reg10));
+
+      // Re-check the snapshot - if a concurrent write moved us to idle while
+      // the read was in flight, bail rather than fight the user's intent.
+      if (this._lastForceCmdValue !== expected) return;
+
+      // Read succeeded - clear any accumulated error count.
+      this._fastCheckConsecutiveErrors = 0;
+
+      if (observed === 0) {
+        this._pushModeEvent('force_revert_detected', {
+          expected,
+          observed: 0,
+          age_ms: Date.now() - this._lastForceCmdWrite,
+        });
+        await this._autoRecoverForceCmd(slaveId, expected);
+      }
+    } catch (error) {
+      // Connection drops, transient Modbus errors etc. - slow poll will recover.
+      this._fastCheckConsecutiveErrors = (this._fastCheckConsecutiveErrors || 0) + 1;
+      const FAST_CHECK_ERROR_THRESHOLD = 3;
+      const FAST_CHECK_BACKOFF_MS = 30000;
+      if (this._fastCheckConsecutiveErrors >= FAST_CHECK_ERROR_THRESHOLD) {
+        this._fastCheckPausedUntil = Date.now() + FAST_CHECK_BACKOFF_MS;
+        this._fastCheckConsecutiveErrors = 0;
+        this.log(`Fast force-check paused ${FAST_CHECK_BACKOFF_MS}ms after ${FAST_CHECK_ERROR_THRESHOLD} consecutive errors (last: ${error.message})`);
+        this._pushModeEvent('fast_check_backoff', {
+          paused_for_ms: FAST_CHECK_BACKOFF_MS,
+          last_error: error.message,
+        });
+      } else {
+        this.log('Fast force-check skipped (will retry):', error.message);
+      }
+    } finally {
+      this._modbusBusy = false;
+    }
+  }
+
+  async _autoRecoverForceCmd(slaveId, target) {
+    if (!target) return;
+    const mode = this.getCapabilityValue('force_charge_mode');
+
+    // force_soc uses a different recovery path: 42011 is the write-and-act
+    // trigger on this firmware. Re-writing it with the current SOC target
+    // re-engages force-charge internally; touching 42010 would either be a
+    // no-op (firmware ignores it for force_soc) or fight the firmware's own
+    // state machine.
+    if (mode === 'force_soc') {
+      const soc = this.getCapabilityValue('measure_battery');
+      const socTarget = this.getCapabilityValue('force_charge_target') || 0;
+      // Skip recovery when the battery has legitimately reached its SOC target:
+      // 42010=0 then is the correct behaviour (firmware stopped because the
+      // target is met). Without this guard we'd re-trigger every fast-check
+      // tick forever once SOC was reached.
+      if (typeof soc === 'number' && socTarget > 0 && soc >= socTarget - 1) {
+        this._pushModeEvent('force_recovery_skipped', {
+          reason: 'soc_at_target',
+          soc,
+          target: socTarget,
+        });
+        return;
+      }
+      await this.modbus.writeSingleRegister(slaveId, 42011, socTarget);
+      this._lastForceCmdWrite = Date.now();
+      this.log(`Auto-recovery: re-triggered force_soc via 42011=${socTarget}% after firmware revert`);
+      this._pushModeEvent('force_recovered', { reasserted: socTarget, mode, register: 42011 });
+      return;
+    }
+
+    // target_power / force_charge / force_discharge: re-write the matching
+    // power register (firmware may have zeroed it together with 42010 on the
+    // revert), then re-assert 42010.
+    const power = (target === 2)
+      ? (this.getCapabilityValue('force_discharge_power') || Math.abs(this.getStoreValue('lastActivePower') || 0))
+      : (this.getCapabilityValue('force_charge_power')    || Math.abs(this.getStoreValue('lastActivePower') || 0));
+    const powerReg = target === 2 ? 42021 : 42020;
+    if (power > 0) {
+      await this.modbus.writeSingleRegister(slaveId, powerReg, Math.min(2500, power));
+    }
+
+    await this.modbus.writeSingleRegister(slaveId, 42010, target);
+    this._lastForceCmdWrite = Date.now();
+
+    // Reflect the recovery on the capability immediately rather than waiting
+    // for the next slow poll (~5s lag). Cuts chart-visible dip width from
+    // "1s + poll_interval" down to "1s + Modbus roundtrip".
+    if (power > 0) {
+      const signedPower = target === 2 ? -power : power;
+      await this.setCapabilityValue('target_power', signedPower).catch(this.error);
+    }
+
+    this.log(`Auto-recovery: re-asserted 42010=${target} (mode=${mode}) after firmware revert`);
+    this._pushModeEvent('force_recovered', { reasserted: target, mode, register: 42010 });
   }
 
   //Update info that does not change often, we do this on device init, if you whant new data, just restart the app
@@ -330,7 +735,7 @@ async writeDeviceName(name, config) {
       this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}", firmware: ${firmwareVersion})`);
 
       //Now store the collected info in read only settings for easy access to the user
-      this.setSettings({
+      this._setSettingsSafe({
         'storage_capacity': this.batteryCapacity + ' kwh',
         'device_name': deviceName,
         'firmware': firmwareVersion,
@@ -353,17 +758,17 @@ async writeDeviceName(name, config) {
       const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
       const charging_cutoff_soc = charging_cutoff_raw * 0.1;
       console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
-      this.setSettings({ 'charging_cutoff_soc': charging_cutoff_soc });
+      this._setSettingsSafe({ 'charging_cutoff_soc': charging_cutoff_soc });
 
       // Read discharging cutoff SOC (register 44001) - resolution 0.1%
       const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
       const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
       const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
       console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
-      this.setSettings({ 'discharging_cutoff_soc': discharging_cutoff_soc });
+      this._setSettingsSafe({ 'discharging_cutoff_soc': discharging_cutoff_soc });
     } catch (error) {
       this.log('Device static info error:', error);
-      this.setUnavailable(`Retrieval of static info failed: ${error.message}`);
+      this._setUnavailableSafe(`Retrieval of static info failed: ${error.message}`);
     }
   }
 
@@ -378,7 +783,7 @@ async writeDeviceName(name, config) {
       this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
 
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this.setUnavailable(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
+        this._setUnavailableSafe(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
       }
       return;
     }
@@ -404,7 +809,7 @@ async writeDeviceName(name, config) {
       // Successful poll - reset error counter and ensure device is marked available
       this.consecutiveErrors = 0;
       if (!this._isDeleted && !this.getAvailable()) {
-        this.setAvailable();
+        this._setAvailableSafe();
       }
 
     } catch (error) {
@@ -413,7 +818,7 @@ async writeDeviceName(name, config) {
 
       // Only mark unavailable after multiple consecutive failures
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this.setUnavailable(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
+        this._setUnavailableSafe(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
       }
     }
   }
@@ -1093,11 +1498,19 @@ async writeDeviceName(name, config) {
 
       const slaveId = this.settings.slave_id || 1;
 
-      // force_soc is a Homey-only mode - on hardware it is triggered by setting a SOC target on register 42011
+      // force_soc is a Homey-only mode - on hardware it is triggered by setting
+      // a SOC target on register 42011. 42011 is special on this firmware: a
+      // write-and-act register where the firmware engages force-charge
+      // internally without needing 42010 to be set explicitly. Do NOT write
+      // 42010 here - the firmware manages that itself for the force_soc path.
+      // We still set _lastForceCmdValue = 1 so the auto-recovery fast-check
+      // treats this as an active force session and reacts if 42010 reverts.
       if (value === 'force_soc') {
         this.log('Force SOC mode selected - writing current SOC target to register 42011');
         const currentTarget = this.getCapabilityValue('force_charge_target') || 25;
         await this.modbus.writeSingleRegister(slaveId, 42011, currentTarget);
+        this._lastForceCmdValue = 1;
+        this._lastForceCmdWrite = Date.now();
         // Reflect the master switch "on" immediately rather than waiting for poll.
         await this.setCapabilityValue('onoff', true).catch(this.error);
         await this.setStoreValue('lastActiveMode', 'homey');
@@ -1113,7 +1526,10 @@ async writeDeviceName(name, config) {
         );
         console.log('Attempt to set mode to '+modeValue+' based on '+value);
         //We expect the work mode to be on force_control, else this is ignored
-        await this.modbus.writeSingleRegister(slaveId, 42010, parseInt(modeValue));
+        const intValue = parseInt(modeValue);
+        await this.modbus.writeSingleRegister(slaveId, 42010, intValue);
+        this._lastForceCmdValue = intValue;
+        if (intValue !== 0) this._lastForceCmdWrite = Date.now();
       }
       this.log('Charge mode set to:', value);
 
@@ -1313,19 +1729,29 @@ async writeDeviceName(name, config) {
 
       // target_power and force_soc are mutually exclusive force strategies, but
       // on the Marstek force_soc is driven by its own register (42011 SOC target)
-      // that keeps running until overwritten — writing 42010 alone does NOT
-      // cancel it. Only neutralize 42011 when force_soc was actually active, to
-      // avoid the extra Modbus roundtrip on every normal target_power write.
+      // that keeps running until overwritten - writing 42010 alone does NOT
+      // cancel it, and a stale 42011 from a previous force_soc session will
+      // make the firmware silently override our target_power writes.
+      //
+      // We re-write 42011 = currentSoc to keep force_soc neutralized (target
+      // equals current = no action). Drift compared against _neutralizedSocTarget
+      // (the SOC we last wrote to 42011), NOT against the force_charge_target
+      // capability - the capability holds the user's selected target which is
+      // almost never equal to currentSoc, so comparing against it would fire
+      // on every single target_power call and storm the bus (v1.3.16 regression).
+      // Comparing against the last-written value means we fire only when
+      // currentSoc has actually drifted >1% since the last neutralization,
+      // i.e. every ~5-10 min under normal load, not every single call.
       const previousForceMode = this.getCapabilityValue('force_charge_mode');
-      const currentSocTarget = this.getCapabilityValue('force_charge_target');
       const currentSoc = this.getCapabilityValue('measure_battery');
-      const socTargetDrift = typeof currentSocTarget === 'number'
+      const socTargetDrift = typeof this._neutralizedSocTarget === 'number'
         && typeof currentSoc === 'number'
-        && Math.abs(currentSocTarget - currentSoc) > 1;
+        && Math.abs(this._neutralizedSocTarget - currentSoc) > 1;
       if ((previousForceMode === 'force_soc' || socTargetDrift)
           && typeof currentSoc === 'number' && currentSoc > 0) {
         const clampedSoc = Math.max(11, Math.min(100, Math.round(currentSoc)));
         await this.modbus.writeSingleRegister(slaveId, 42011, clampedSoc);
+        this._neutralizedSocTarget = clampedSoc;
         this.log(`Neutralized force_soc by writing current SOC (${clampedSoc}%) to 42011`);
       }
 
@@ -1358,7 +1784,13 @@ async writeDeviceName(name, config) {
       // (e.g. ramping +500W → +800W) this saves one Modbus round-trip.
       if (newReg42010 !== prevReg42010) {
         await this.modbus.writeSingleRegister(slaveId, 42010, newReg42010);
+        this._lastForceCmdWrite = Date.now();
       }
+      // Track our intent for the auto-recovery fast-check. Even when the 42010
+      // write was skipped above (same regime), our intent is still newReg42010
+      // and the fast-check needs that to decide whether a later observed 0 is
+      // a firmware revert (recover) or an intentional idle (ignore).
+      this._lastForceCmdValue = newReg42010;
 
       // The force_mode_delay was added to give the battery time to switch
       // between force regimes. Within the same regime (steady charging or
@@ -1532,7 +1964,11 @@ async writeDeviceName(name, config) {
     // Set flag immediately to prevent any pending poll operations
     this._isDeleted = true;
     this.stopPolling();
-    this.disconnectModbus();
+    // Await the disconnect so the TCP socket is fully closed before Homey
+    // unloads the device instance. Otherwise the Marstek can still see us
+    // as a connected client for a while, blocking a fresh add immediately
+    // after a delete.
+    await this.disconnectModbus();
   }
 
   // ============================================
