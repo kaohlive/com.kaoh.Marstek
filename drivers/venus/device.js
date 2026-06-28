@@ -248,7 +248,7 @@ async writeDeviceName(name, config) {
         ip: this.settings.ip,
         port: this.settings.port || 502
       });
-      
+
       return success;
     } catch (error) {
       this.log('Modbus connection failed:', error);
@@ -261,6 +261,158 @@ async writeDeviceName(name, config) {
       this.modbus.disconnect();
       this.log('Disconnected from Modbus device');
     }
+  }
+
+  // ============================================
+  // DIAGNOSTIC API HELPERS (called via app.js endpoints)
+  // ============================================
+  // These delegate diagnostic reads/writes through this device's own
+  // ModbusClient instance. Earlier versions had a separate ModbusClient
+  // instance on app.js (testModbus) which opened a parallel TCP socket to
+  // the same device - on Marstek hardware with native Modbus TCP (one
+  // client slot only) this competed with the slow poll for the slot and
+  // showed up in field logs as alternating ECONNREFUSED +
+  // TransactionTimedOutError whenever a user opened the settings dump
+  // page while the poll was active.
+
+  async apiReadRegister(address, count = 1) {
+    if (!await this.connectModbus()) {
+      throw new Error('Modbus connection failed');
+    }
+    const slaveId = this.settings.slave_id || 1;
+    const result = await this.modbus.readHoldingRegisters(slaveId, address, count);
+    const buffer = Buffer.concat(result);
+    const response = {
+      success: true,
+      address,
+      count,
+      raw: Array.from(buffer),
+      uint16: ModbusClient.bufferToUint16(buffer),
+      int16: ModbusClient.bufferToInt16(buffer),
+      hex: buffer.toString('hex').toUpperCase(),
+    };
+    if (count >= 2) {
+      response.uint32 = ModbusClient.bufferToUint32(buffer);
+      response.int32 = ModbusClient.bufferToInt32(buffer);
+    }
+    return response;
+  }
+
+  async apiWriteRegister(address, value) {
+    if (!await this.connectModbus()) {
+      throw new Error('Modbus connection failed');
+    }
+    const slaveId = this.settings.slave_id || 1;
+    await this.modbus.writeSingleRegister(slaveId, address, value);
+    this.log(`API write: register ${address} = ${value}`);
+    return { success: true, address, value };
+  }
+
+  async apiPollState() {
+    if (!await this.connectModbus()) {
+      throw new Error('Modbus connection failed');
+    }
+    const slaveId = this.settings.slave_id || 1;
+    const data = {
+      deviceInfo: {},
+      batteryState: {},
+      systemState: {},
+      controlRegisters: {},
+      protectionSettings: {},
+      alarms: {},
+    };
+
+    const safeRead = async (label, addr, count, transform) => {
+      try {
+        const r = await this.modbus.readHoldingRegisters(slaveId, addr, count);
+        return transform(r);
+      } catch (e) {
+        return 'Error: ' + e.message;
+      }
+    };
+
+    // Device info
+    data.deviceInfo['31000_device_name'] = await safeRead('name', 31000, 10,
+      (r) => ModbusClient.bufferToString(r));
+    data.deviceInfo['31101_firmware'] = await safeRead('firmware', 31101, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.deviceInfo['32105_total_energy_kwh'] = await safeRead('energy', 32105, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.001);
+
+    // Battery state
+    data.batteryState['32100_battery_voltage_V'] = await safeRead('battV', 32100, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.01);
+    data.batteryState['32101_battery_current_A'] = await safeRead('battA', 32101, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.01);
+    data.batteryState['32102_battery_power_W'] = await safeRead('battW', 32102, 2,
+      (r) => ModbusClient.bufferToInt32(Buffer.concat(r)));
+    data.batteryState['32104_soc_percent'] = await safeRead('soc', 32104, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.batteryState['32200_ac_voltage_V'] = await safeRead('acV', 32200, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.1);
+    data.batteryState['32202_ac_power_W'] = await safeRead('acW', 32202, 2,
+      (r) => ModbusClient.bufferToInt32(Buffer.concat(r)));
+    data.batteryState['33000_total_charge_energy_kWh'] = await safeRead('chgE', 33000, 2,
+      (r) => ModbusClient.bufferToUint32(Buffer.concat(r)) * 0.01);
+    data.batteryState['33002_total_discharge_energy_kWh'] = await safeRead('disE', 33002, 2,
+      (r) => ModbusClient.bufferToInt32(Buffer.concat(r)) * 0.01);
+    data.batteryState['35000_internal_temp_C'] = await safeRead('tempInt', 35000, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.1);
+    data.batteryState['35001_mos1_temp_C'] = await safeRead('tempMos1', 35001, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.1);
+    data.batteryState['35002_mos2_temp_C'] = await safeRead('tempMos2', 35002, 1,
+      (r) => ModbusClient.bufferToInt16(Buffer.concat(r)) * 0.1);
+
+    // System state
+    const stateNames = ['sleep', 'standby', 'charge', 'discharge', 'backup', 'update', 'bypass'];
+    data.systemState['35100_inverter_state'] = await safeRead('inv', 35100, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, name: stateNames[v] || 'unknown' };
+    });
+
+    // Control registers
+    data.controlRegisters['41200_backup_mode'] = await safeRead('backup', 41200, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, enabled: v === 0 };
+    });
+    data.controlRegisters['42000_rs485_control'] = await safeRead('rs485', 42000, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, hex: '0x' + v.toString(16).toUpperCase(), modbus_enabled: v === 21930 };
+    });
+    const forceModeNames = ['none', 'force_charge', 'force_discharge'];
+    data.controlRegisters['42010_force_mode'] = await safeRead('fmode', 42010, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, name: forceModeNames[v] || 'unknown' };
+    });
+    data.controlRegisters['42011_charge_to_soc_percent'] = await safeRead('fsoc', 42011, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.controlRegisters['42020_force_charge_power_W'] = await safeRead('fcp', 42020, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.controlRegisters['42021_force_discharge_power_W'] = await safeRead('fdp', 42021, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    const workModeNames = ['manual', 'anti_feed', 'trade_mode', 'control_mode'];
+    data.controlRegisters['43000_user_work_mode'] = await safeRead('wmode', 43000, 1, (r) => {
+      const v = ModbusClient.bufferToUint16(Buffer.concat(r));
+      return { raw: v, name: workModeNames[v] || 'unknown (' + v + ')' };
+    });
+
+    // Protection
+    data.protectionSettings['44000_charging_cutoff_soc_percent'] = await safeRead('ccs', 44000, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.1);
+    data.protectionSettings['44001_discharging_cutoff_soc_percent'] = await safeRead('dcs', 44001, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.1);
+    data.protectionSettings['44002_max_charge_power_W'] = await safeRead('mcp', 44002, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.protectionSettings['44003_max_discharge_power_W'] = await safeRead('mdp', 44003, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+
+    // Alarms
+    data.alarms['36000_alarm_code'] = await safeRead('alarm', 36000, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    data.alarms['36100_fault_word'] = await safeRead('fault', 36100, 1,
+      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+
+    return { success: true, data };
   }
 
   startPolling() {
