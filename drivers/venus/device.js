@@ -220,9 +220,40 @@ async writeDeviceName(name, config) {
     }
   }
 
+  // Safe wrappers around the Homey Device API. After a device is deleted the
+  // SDK will reject these calls with "Device not found" - if the call was
+  // un-awaited (most of them are, fire-and-forget for capability sync) it ends
+  // as an unhandledRejection on the app process (visible in support logs and a
+  // long-term stability risk). After delete we go quiet to avoid noisy logs.
+  _setSettingsSafe(settings) {
+    return this.setSettings(settings).catch((err) => {
+      if (!this._isDeleted) this.log('setSettings failed:', err.message);
+    });
+  }
+  _setUnavailableSafe(reason) {
+    return this.setUnavailable(reason).catch((err) => {
+      if (!this._isDeleted) this.log('setUnavailable failed:', err.message);
+    });
+  }
+  _setAvailableSafe() {
+    return this.setAvailable().catch((err) => {
+      if (!this._isDeleted) this.log('setAvailable failed:', err.message);
+    });
+  }
+  _setWarningSafe(message) {
+    return this.setWarning(message).catch((err) => {
+      if (!this._isDeleted) this.log('setWarning failed:', err.message);
+    });
+  }
+  _unsetWarningSafe() {
+    return this.unsetWarning().catch((err) => {
+      if (!this._isDeleted) this.log('unsetWarning failed:', err.message);
+    });
+  }
+
   setupModbusHandlers() {
     this.modbus.on('connect', () => {
-      this.setAvailable();
+      this._setAvailableSafe();
       this.consecutiveErrors = 0; // Reset error counter on successful connection
       this.log('Connected to Modbus device');
       this.processDeviceStaticInfo(this.settings.slave_id || 1);
@@ -490,7 +521,7 @@ async writeDeviceName(name, config) {
       this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}", firmware: ${firmwareVersion})`);
 
       //Now store the collected info in read only settings for easy access to the user
-      this.setSettings({
+      this._setSettingsSafe({
         'storage_capacity': this.batteryCapacity + ' kwh',
         'device_name': deviceName,
         'firmware': firmwareVersion,
@@ -513,17 +544,17 @@ async writeDeviceName(name, config) {
       const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
       const charging_cutoff_soc = charging_cutoff_raw * 0.1;
       console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
-      this.setSettings({ 'charging_cutoff_soc': charging_cutoff_soc });
+      this._setSettingsSafe({ 'charging_cutoff_soc': charging_cutoff_soc });
 
       // Read discharging cutoff SOC (register 44001) - resolution 0.1%
       const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
       const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
       const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
       console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
-      this.setSettings({ 'discharging_cutoff_soc': discharging_cutoff_soc });
+      this._setSettingsSafe({ 'discharging_cutoff_soc': discharging_cutoff_soc });
     } catch (error) {
       this.log('Device static info error:', error);
-      this.setUnavailable(`Retrieval of static info failed: ${error.message}`);
+      this._setUnavailableSafe(`Retrieval of static info failed: ${error.message}`);
     }
   }
 
@@ -538,7 +569,7 @@ async writeDeviceName(name, config) {
       this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
 
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this.setUnavailable(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
+        this._setUnavailableSafe(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
       }
       return;
     }
@@ -564,7 +595,7 @@ async writeDeviceName(name, config) {
       // Successful poll - reset error counter and ensure device is marked available
       this.consecutiveErrors = 0;
       if (!this._isDeleted && !this.getAvailable()) {
-        this.setAvailable();
+        this._setAvailableSafe();
       }
 
     } catch (error) {
@@ -573,7 +604,7 @@ async writeDeviceName(name, config) {
 
       // Only mark unavailable after multiple consecutive failures
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this.setUnavailable(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
+        this._setUnavailableSafe(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
       }
     }
   }

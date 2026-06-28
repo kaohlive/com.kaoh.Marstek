@@ -32,12 +32,53 @@ class ModbusClient extends EventEmitter {
     // with native Modbus TCP only allow one client at a time - an orphaned
     // socket keeps the device's only slot occupied until TCP TIME_WAIT clears.
     this._connectPromise = null;
+    // Used by _classifyError to differentiate "slave never answered" from
+    // "slave answered before and has now stopped" - the former is almost
+    // always a misconfigured slave_id, the latter is the device going away.
+    this._hasEverSucceeded = false;
   }
 
   // TCP cleanup grace after a close() before we open the next socket. The
   // FIN/ACK handshake plus the device's view of "slot is free" takes a moment;
   // skipping this can race with the Marstek's slot-release on native Modbus.
   static CLOSE_GRACE_MS = 150;
+
+  // Classifies a Modbus / TCP error into a short tag for log lines. Lets
+  // support tell at a glance whether a timeout is a local-network/config
+  // issue (TCP layer) or a device-side issue (Modbus protocol layer).
+  //   [TCP/REFUSED]          - port not listening (gateway down, wrong port)
+  //   [TCP/UNREACHABLE]      - no route (wrong IP, firewall, VLAN issue)
+  //   [TCP/CONNECT_TIMEOUT]  - TCP SYN sent, no SYN-ACK in time
+  //   [TCP/RESET]            - peer closed mid-operation (device, network, or
+  //                            another client claiming the slot)
+  //   [Modbus/NO_RESPONSE]   - we never had a successful response from this
+  //                            slave - almost certainly wrong slave_id or
+  //                            wrong physical device
+  //   [Modbus/PROTOCOL_TIMEOUT] - we DID succeed before; slave has gone silent
+  //                            (firmware glitch, slot stolen, idle-disconnect)
+  //   [Modbus/NOT_CONNECTED] - our own pre-flight check; reconnect pending
+  //   [TCP/UNKNOWN]          - anything we did not categorise
+  _classifyError(err) {
+    const msg = (err && err.message) ? err.message : '';
+    const code = (err && err.code) ? err.code : '';
+    const name = (err && err.name) ? err.name : '';
+
+    if (code === 'ECONNREFUSED') return { tag: '[TCP/REFUSED]', code };
+    if (code === 'EHOSTUNREACH' || code === 'ENETUNREACH' || code === 'EAI_AGAIN'
+        || code === 'ENOTFOUND') return { tag: '[TCP/UNREACHABLE]', code };
+    if (code === 'ECONNRESET' || code === 'EPIPE') return { tag: '[TCP/RESET]', code };
+    if (msg === 'Connection timeout') return { tag: '[TCP/CONNECT_TIMEOUT]', code: 'TIMEOUT' };
+    if (msg === 'Modbus not connected') return { tag: '[Modbus/NOT_CONNECTED]', code: 'NOT_CONNECTED' };
+
+    if (name === 'TransactionTimedOutError' || code === 'ETIMEDOUT') {
+      return this._hasEverSucceeded
+        ? { tag: '[Modbus/PROTOCOL_TIMEOUT]', code: 'TIMEOUT' }
+        : { tag: '[Modbus/NO_RESPONSE]', code: 'NO_RESPONSE' };
+    }
+    if (msg.toLowerCase().includes('crc')) return { tag: '[Modbus/CRC]', code: 'CRC' };
+
+    return { tag: '[TCP/UNKNOWN]', code: code || 'UNKNOWN' };
+  }
 
   // Serializes wire-touching operations against this client. Acquires by
   // awaiting the previous tail; releases when fn() resolves or rejects so the
@@ -264,12 +305,14 @@ class ModbusClient extends EventEmitter {
         try {
           this.client.setID(slaveId || 1);
           const response = await this.client.readHoldingRegisters(address, quantity);
+          this._hasEverSucceeded = true;
           // Preserve the modbus-stream return shape (array of buffers) so
           // existing device.js callers that do Buffer.concat([...]) keep working.
           return [response.buffer];
         } catch (err) {
+          const { tag } = this._classifyError(err);
           if (attempt < retries && this.connected) {
-            console.log(`Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
+            console.log(`${tag} Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
             await new Promise(resolve => setTimeout(resolve, 500));
           } else {
             throw err;
@@ -289,10 +332,12 @@ class ModbusClient extends EventEmitter {
         try {
           this.client.setID(slaveId || 1);
           await this.client.writeRegister(address, value);
+          this._hasEverSucceeded = true;
           return;
         } catch (err) {
+          const { tag } = this._classifyError(err);
           if (attempt < retries && this.connected) {
-            console.log(`Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
+            console.log(`${tag} Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
             await new Promise(resolve => setTimeout(resolve, 500));
           } else {
             throw err;
@@ -317,6 +362,7 @@ class ModbusClient extends EventEmitter {
 
       this.client.setID(slaveId || 1);
       await this.client.writeRegisters(address, regs);
+      this._hasEverSucceeded = true;
     });
   }
 
