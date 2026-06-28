@@ -1,4 +1,7 @@
 {
+  "1.4.2": {
+    "en": "Minimal-improvements release built on the v1.3.4 baseline that testers confirmed still works. Adds only three low-risk changes on top: (1) every Modbus error log line is now prefixed with a category tag like [TCP/REFUSED], [TCP/RESET], [Modbus/PROTOCOL_TIMEOUT] so support can tell at a glance what kind of failure it is - log-only, no behaviour change. (2) The settings-page register read/write/dump endpoints now go through the device's own ModbusClient instead of opening a parallel TCP socket - fixes a self-collision on Marstek hardware with single-client native Modbus TCP. (3) A leftover duplicate processBatteryHealth call in the poll loop is removed, cutting 3 redundant reads per cycle. Deliberately NOT included from the 1.3.5-1.4.0 series: the per-instance Modbus mutex (caused regressions on some V3 firmware versions), the lifecycle-hygiene close-grace, the pollData abort-on-wire-failure, the safe Homey API wrappers, the keepalive/fast-check loops, and the connection profile system. If 1.4.2 works for testers who broke on 1.3.22/1.4.0, we know the issue was in one of those omitted features."
+  },
   "1.0.0": {
     "en": "First version!"
   },
