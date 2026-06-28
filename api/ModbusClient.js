@@ -12,19 +12,22 @@ class ModbusClient extends EventEmitter {
     this.reconnectInterval = null;
     this.config = null;
     this.reconnectAttempts = 0;
-    this.reconnectDelay = 5000; // Start with 5 seconds
-    this.maxReconnectDelay = 300000; // Max 5 minutes - keeps retrying forever at this cadence
+    this.maxReconnectAttempts = 30; // Lenient max (~4h with 5-60s backoff) before
+                                     // we give up and the device goes unavailable.
+                                     // Was 10 in v1.3.18, then removed in v1.3.19
+                                     // (indefinite). Restored here as a bounded
+                                     // exit so a truly dead device produces a
+                                     // user-visible state instead of an infinite
+                                     // reconnect storm.
+    this.reconnectDelay = 5000;     // Start with 5 seconds.
+    this.maxReconnectDelay = 60000; // Cap at 60s (was raised to 5min in v1.3.19
+                                     // to pair with indefinite retries; reverted
+                                     // with the give-up cap restored).
     this.isReconnecting = false;
     // Used by _classifyError to differentiate "slave never answered" from
     // "slave answered before and has now stopped" - the former is almost
     // always a misconfigured slave_id, the latter is the device going away.
     this._hasEverSucceeded = false;
-    // Consecutive protocol-timeout count across ALL reads/writes. After
-    // FORCE_RECONNECT_THRESHOLD failures we proactively close the socket and
-    // reconnect: a half-broken TCP that modbus-serial keeps "open" but on
-    // which no requests get responses can otherwise stay stuck forever.
-    // Reset to 0 on any successful read/write.
-    this._consecutiveTimeouts = 0;
     // Promise-chain mutex: every wire-touching call (read/write) goes through
     // _serialize() so two operations can never be in flight on the same TCP
     // connection. Without this, a slow-poll read and a user-driven write can
@@ -46,11 +49,6 @@ class ModbusClient extends EventEmitter {
   // FIN/ACK handshake plus the device's view of "slot is free" takes a moment;
   // skipping this can race with the Marstek's slot-release on native Modbus.
   static CLOSE_GRACE_MS = 150;
-
-  // After this many consecutive read/write protocol timeouts we proactively
-  // force-reconnect rather than continuing to retry on what may be a dead
-  // socket. Resets to 0 on any successful operation.
-  static FORCE_RECONNECT_THRESHOLD = 3;
 
   // Classifies a Modbus / TCP error into a short tag for log lines. Lets
   // support tell at a glance whether a timeout is a local-network/config
@@ -168,7 +166,6 @@ class ModbusClient extends EventEmitter {
       this.connected = true;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
-      this._inLongTermRetry = false;
 
       this.setupConnectionHandlers();
       this.emit('connect');
@@ -233,28 +230,22 @@ class ModbusClient extends EventEmitter {
       return;
     }
 
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log(`Max reconnection attempts (${this.maxReconnectAttempts}) reached - giving up. Device will go unavailable; restart the app or fix connectivity to recover.`);
+      this.emit('error', new Error('Max reconnection attempts reached'));
+      return;
+    }
+
     this.isReconnecting = true;
     this.reconnectAttempts++;
 
     // Exponential backoff: delay * 2^(attempts-1), capped at maxReconnectDelay.
-    // We never give up - a device that comes back after 4 hours, 2 days,
-    // whatever, should be reconnected automatically. Requiring the user to
-    // restart the app for every dropped connection is bad UX. Cap is 5min so
-    // we don't hammer a long-dead device, but we keep trying forever at that
-    // cadence.
     const delay = Math.min(
       this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
       this.maxReconnectDelay
     );
 
-    // Loud one-time log when we transition into "long-term retry" mode so a
-    // support log makes it obvious the app is still trying, just slowly.
-    if (delay >= this.maxReconnectDelay && !this._inLongTermRetry) {
-      this._inLongTermRetry = true;
-      console.log(`Reconnect entering long-term retry mode (every ${this.maxReconnectDelay / 1000}s) - attempt ${this.reconnectAttempts}`);
-    } else if (!this._inLongTermRetry) {
-      console.log(`Scheduling reconnect attempt ${this.reconnectAttempts} in ${delay}ms`);
-    }
+    console.log(`Scheduling reconnect attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
 
     this.reconnectInterval = setTimeout(async () => {
       this.reconnectInterval = null;
@@ -264,19 +255,14 @@ class ModbusClient extends EventEmitter {
       // here avoids the noisy "Attempting reconnection" log line.
       if (this.connected || this._connectPromise) {
         this.isReconnecting = false;
-        this._inLongTermRetry = false;
         return;
       }
       if (this.config) {
-        if (!this._inLongTermRetry) {
-          console.log(`Attempting reconnection (attempt ${this.reconnectAttempts})`);
-        }
+        console.log(`Attempting reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         const success = await this.connect(this.config);
         if (!success) {
           this.isReconnecting = false;
           this.scheduleReconnect(); // Try again with exponential backoff
-        } else {
-          this._inLongTermRetry = false;
         }
       } else {
         this.isReconnecting = false;
@@ -336,7 +322,6 @@ class ModbusClient extends EventEmitter {
             console.log(`${tag} Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
             await new Promise(resolve => setTimeout(resolve, 500));
           } else {
-            this._onWireFailure(err);
             throw err;
           }
         }
@@ -362,7 +347,6 @@ class ModbusClient extends EventEmitter {
             console.log(`${tag} Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
             await new Promise(resolve => setTimeout(resolve, 500));
           } else {
-            this._onWireFailure(err);
             throw err;
           }
         }
@@ -388,34 +372,16 @@ class ModbusClient extends EventEmitter {
         await this.client.writeRegisters(address, regs);
         this._onWireSuccess();
       } catch (err) {
-        this._onWireFailure(err);
         throw err;
       }
     });
   }
 
+  // Flag flipped on the first successful read/write. Used by _classifyError
+  // to differentiate "slave never answered" (probably wrong slave_id) from
+  // "slave answered before and has now stopped" (transient device issue).
   _onWireSuccess() {
     this._hasEverSucceeded = true;
-    this._consecutiveTimeouts = 0;
-  }
-
-  // Called after a read/write has exhausted its retries and is about to throw.
-  // For protocol-timeout style failures we count them up; after N in a row we
-  // proactively force-reconnect to clear modbus-serial's transaction state
-  // and the (possibly half-broken) TCP socket. Modbus-serial leaks per-request
-  // state on time-outs, so over thousands of failures this would also pile up
-  // memory and eventually OOM the app process.
-  _onWireFailure(err) {
-    const { code } = this._classifyError(err);
-    if (code === 'TIMEOUT' || code === 'NO_RESPONSE') {
-      this._consecutiveTimeouts++;
-      if (this._consecutiveTimeouts >= ModbusClient.FORCE_RECONNECT_THRESHOLD) {
-        console.log(`[Modbus] ${this._consecutiveTimeouts} consecutive timeouts - forcing reconnect to clear socket and library state`);
-        this._consecutiveTimeouts = 0;
-        // Fire-and-forget so the original throw still propagates fast
-        this.forceReconnect().catch((e) => console.log('Force reconnect failed:', e.message));
-      }
-    }
   }
 
   isConnected() {

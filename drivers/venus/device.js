@@ -62,6 +62,15 @@ class VenusBatteryDevice extends Homey.Device {
     // capability (which would never match and would fire on every call).
     this._neutralizedSocTarget = undefined;
 
+    // Wire-failure tracking for the persistent-timeout warning. _timeoutStreakStartedAt
+    // is the wall-clock of the first pollData failure in the current streak (0 when
+    // healthy). When the streak exceeds PERSISTENT_TIMEOUT_WARN_MS we set a user-
+    // visible setWarning explaining the most likely cause (slot contention on V3
+    // native Modbus). Cleared on the next successful poll. The flag prevents us
+    // re-setting the same warning every cycle - setWarning is persisted by Homey.
+    this._timeoutStreakStartedAt = 0;
+    this._persistentTimeoutWarningShown = false;
+
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
@@ -127,6 +136,37 @@ class VenusBatteryDevice extends Homey.Device {
     return this.setAvailable().catch((err) => {
       if (!this._isDeleted) this.log('setAvailable failed:', err.message);
     });
+  }
+  _setWarningSafe(message) {
+    return this.setWarning(message).catch((err) => {
+      if (!this._isDeleted) this.log('setWarning failed:', err.message);
+    });
+  }
+  _unsetWarningSafe() {
+    return this.unsetWarning().catch((err) => {
+      if (!this._isDeleted) this.log('unsetWarning failed:', err.message);
+    });
+  }
+
+  // True for the error classes that mean "the wire is unhappy" - timeouts,
+  // socket resets, pre-flight 'Modbus not connected'. Used by the process*
+  // methods to decide whether to re-throw and abort the whole pollData cycle
+  // (one bad wire = no point trying the next 3 register batches and producing
+  // 3 more wire failures that all count toward the forceReconnect threshold).
+  // Non-wire errors (parse / scaling / capability validation) stay swallowed
+  // by the inner try/catch so one bad register doesn't kill the whole poll.
+  _isWireError(err) {
+    if (!err) return false;
+    const name = err.name || '';
+    const code = err.code || '';
+    const msg = err.message || '';
+    return name === 'TransactionTimedOutError'
+      || code === 'ETIMEDOUT'
+      || code === 'ECONNRESET' || code === 'EPIPE'
+      || code === 'ECONNREFUSED'
+      || code === 'EHOSTUNREACH' || code === 'ENETUNREACH'
+      || msg === 'Modbus not connected'
+      || msg === 'Connection timeout';
   }
 
   // ============================================
@@ -811,6 +851,15 @@ async writeDeviceName(name, config) {
       if (!this._isDeleted && !this.getAvailable()) {
         this._setAvailableSafe();
       }
+      // Healthy poll - close any open timeout streak and remove the persistent-
+      // timeout warning if we'd previously raised it.
+      if (this._timeoutStreakStartedAt !== 0) {
+        this._timeoutStreakStartedAt = 0;
+      }
+      if (this._persistentTimeoutWarningShown) {
+        this._persistentTimeoutWarningShown = false;
+        this._unsetWarningSafe();
+      }
 
     } catch (error) {
       this.consecutiveErrors++;
@@ -819,6 +868,23 @@ async writeDeviceName(name, config) {
       // Only mark unavailable after multiple consecutive failures
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this._setUnavailableSafe(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
+      }
+
+      // Persistent-timeout warning. When wire failures keep happening for >5
+      // minutes across pollData cycles, surface a setWarning on the device
+      // tile pointing at the most likely external cause (slot contention or
+      // network/cabling). Users don't read logs - this puts the hint on the
+      // device tile in the Homey UI. Cleared the moment a poll succeeds.
+      if (this._isWireError(error)) {
+        const PERSISTENT_TIMEOUT_WARN_MS = 5 * 60 * 1000;
+        if (this._timeoutStreakStartedAt === 0) {
+          this._timeoutStreakStartedAt = Date.now();
+        } else if (!this._persistentTimeoutWarningShown
+            && Date.now() - this._timeoutStreakStartedAt >= PERSISTENT_TIMEOUT_WARN_MS
+            && !this._isDeleted) {
+          this._persistentTimeoutWarningShown = true;
+          this._setWarningSafe('Frequent Modbus timeouts. If your battery has built-in Modbus TCP (e.g. Marstek V3), only one client can connect at a time - check that no other app (Marstek mobile app, Home Assistant, MQTT bridge, etc.) is connected. Network/cabling issues can also cause this.');
+        }
       }
     }
   }
@@ -888,6 +954,10 @@ async writeDeviceName(name, config) {
 
     } catch (error) {
       this.log('Error processing battery state:', error);
+      // Re-throw wire errors so pollData aborts the cycle instead of plowing
+      // through 3 more process* calls that will all time out and each count
+      // as a separate wire failure toward the forceReconnect threshold.
+      if (this._isWireError(error)) throw error;
     }
   }
 
@@ -912,7 +982,8 @@ async writeDeviceName(name, config) {
         await this.processAlarmCodes(slaveId);
       }
     } catch (error) {
-      this.log('Error processing battery state:', error);
+      this.log('Error processing battery health:', error);
+      if (this._isWireError(error)) throw error;
     }
   }
 
@@ -1145,6 +1216,7 @@ async writeDeviceName(name, config) {
 
     } catch (error) {
       this.log('Error processing system data:', error);
+      if (this._isWireError(error)) throw error;
     }
   }
 

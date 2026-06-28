@@ -1,4 +1,13 @@
 {
+  "1.3.22": {
+    "en": "Stability rollback: removes the aggressive force-reconnect-on-3-timeouts behaviour introduced in 1.3.19 that destabilised previously-stable setups. Also restores the bounded reconnect ceiling (30 attempts) so a truly dead device produces an unavailable state instead of an infinite reconnect storm. Kept from 1.3.19: error classifier in logs and the safe Homey API wrappers. Kept on top: pollData aborts after the first wire failure in a cycle (cuts bus load), and a setWarning appears on the device tile after 5 minutes of sustained Modbus timeouts pointing at slot contention or network issues."
+  },
+  "1.3.21": {
+    "en": "(withdrawn) V3 auto-tune + warning system - never released."
+  },
+  "1.3.20": {
+    "en": "(withdrawn) Connection profile system - never released."
+  },
   "1.0.0": {
     "en": "First version!"
   },
