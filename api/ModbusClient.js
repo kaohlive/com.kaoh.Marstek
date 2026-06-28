@@ -12,7 +12,15 @@ class ModbusClient extends EventEmitter {
     this.reconnectInterval = null;
     this.config = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10;
+    // Lenient max attempts (~4h with 5-60s exponential backoff) before we
+    // give up and the device goes unavailable. v1.3.4 used 10 which gave up
+    // after ~7 minutes, requiring a manual app restart for any transient
+    // network blip. v1.3.19 removed the ceiling entirely (indefinite retry)
+    // but that combined badly with the also-introduced forceReconnect-on-
+    // timeouts to produce eternal reconnect storms. 30 is a middle ground:
+    // a truly dead device produces a user-visible unavailable state, but a
+    // 2-hour ISP outage still recovers without intervention.
+    this.maxReconnectAttempts = 30;
     this.reconnectDelay = 5000; // Start with 5 seconds
     this.maxReconnectDelay = 60000; // Max 60 seconds
     this.isReconnecting = false;
