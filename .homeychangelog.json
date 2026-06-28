@@ -79,5 +79,8 @@
   },
   "1.3.4": {
     "en": "Hot-path optimizations for sustained target_power writes from external orchestrators"
+  },
+  "1.4.0": {
+    "en": "Clean rebuild from the 1.3.4 baseline. The 1.3.5-1.3.19 series was a long chain of attempts to mask a Marstek V3 firmware-side behaviour (force-command countdown reverts) that turned out not to be an app-side problem at all. Those attempts (keepalive loops, fast-check recovery, force-reconnect on timeouts) destabilised the Modbus connection for many users that were previously stable. 1.4.0 drops all of that and keeps only the genuine wins that stand on their own: per-instance Modbus mutex to prevent overlapping reads/writes from corrupting framing, connection-lifecycle hygiene (in-flight connect promise caching + close grace) to prevent orphaned sockets on the V3's single-client TCP slot, diagnostic API routing through the device's own ModbusClient (no second competing client on app.js), error classifier in logs, safe Homey API wrappers to prevent unhandledRejection after device delete, pollData abort on first wire failure to cut bus load during recovery, persistent setWarning on the device tile after 5 minutes of sustained timeouts, reconnect ceiling raised from 10 to 30 attempts (~4h of trying before unavailable) for transient network blips, and a copy-paste duplicate read removed from pollData."
   }
 }
