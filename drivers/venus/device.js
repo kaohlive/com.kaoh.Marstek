@@ -141,7 +141,7 @@ class VenusBatteryDevice extends Homey.Device {
 
     // Restart polling if connection settings changed
     if (changedKeys.includes('ip') || changedKeys.includes('port') || changedKeys.includes('poll_interval')) {
-      this.restartPolling();
+      await this.restartPolling();
     }
 
     // Handle charging cutoff SOC change
@@ -242,35 +242,43 @@ async writeDeviceName(name, config) {
     if (this.modbus.isConnected()) {
       return true;
     }
-
-    try {
-      const success = await this.modbus.connect({
-        ip: this.settings.ip,
-        port: this.settings.port || 502
-      });
-      
-      return success;
-    } catch (error) {
-      this.log('Modbus connection failed:', error);
-      return false;
-    }
+    // Cache the in-flight connect so two concurrent callers (e.g. pollData and
+    // a user write that both first call connectModbus()) share the same
+    // attempt instead of racing - the loser would orphan the Marstek's single
+    // TCP slot. ModbusClient.connect() does the same internally; this layer
+    // skips the round-trip when we know we're already trying.
+    if (this._connectPromise) return this._connectPromise;
+    this._connectPromise = (async () => {
+      try {
+        return await this.modbus.connect({
+          ip: this.settings.ip,
+          port: this.settings.port || 502
+        });
+      } catch (error) {
+        this.log('Modbus connection failed:', error);
+        return false;
+      }
+    })().finally(() => {
+      this._connectPromise = null;
+    });
+    return this._connectPromise;
   }
 
-  disconnectModbus() {
+  async disconnectModbus() {
     if (this.modbus) {
-      this.modbus.disconnect();
+      await this.modbus.disconnect();
       this.log('Disconnected from Modbus device');
     }
   }
 
   startPolling() {
     this.stopPolling();
-    
+
     const interval = this.settings.poll_interval || 5000;
     this.pollInterval = setInterval(async () => {
       await this.pollData();
     }, interval);
-    
+
     // Initial poll
     setTimeout(() => this.pollData(), 1000);
   }
@@ -282,9 +290,9 @@ async writeDeviceName(name, config) {
     }
   }
 
-  restartPolling() {
+  async restartPolling() {
     this.stopPolling();
-    this.disconnectModbus();
+    await this.disconnectModbus();
     this.startPolling();
   }
 
@@ -1532,7 +1540,7 @@ async writeDeviceName(name, config) {
     // Set flag immediately to prevent any pending poll operations
     this._isDeleted = true;
     this.stopPolling();
-    this.disconnectModbus();
+    await this.disconnectModbus();
   }
 
   // ============================================

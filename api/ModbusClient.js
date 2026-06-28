@@ -25,7 +25,19 @@ class ModbusClient extends EventEmitter {
     // is bus-load sensitive enough that even brief overlap kills it for
     // ~minutes (3-retry cascade @ ~5s timeout = ~15s per failed call).
     this._busy = Promise.resolve();
+    // In-flight connect promise. connect() is idempotent under this: two
+    // parallel callers (e.g. a slow poll and a user write that both first
+    // call connectModbus()) share the same connect attempt rather than each
+    // opening their own TCP socket and orphaning the loser. Marstek devices
+    // with native Modbus TCP only allow one client at a time - an orphaned
+    // socket keeps the device's only slot occupied until TCP TIME_WAIT clears.
+    this._connectPromise = null;
   }
+
+  // TCP cleanup grace after a close() before we open the next socket. The
+  // FIN/ACK handshake plus the device's view of "slot is free" takes a moment;
+  // skipping this can race with the Marstek's slot-release on native Modbus.
+  static CLOSE_GRACE_MS = 150;
 
   // Serializes wire-touching operations against this client. Acquires by
   // awaiting the previous tail; releases when fn() resolves or rejects so the
@@ -45,19 +57,43 @@ class ModbusClient extends EventEmitter {
   }
 
   async connect(config) {
+    // Idempotency: if another caller is already connecting, hand them the same
+    // promise instead of starting a parallel TCP open. Without this, two
+    // callers (slow poll + user write that both first call connectModbus())
+    // would each construct a ModbusRTU and call connectTCP - one becomes
+    // this.client, the other's socket is now orphaned but still consumes the
+    // Marstek's single client slot until TCP times it out.
+    if (this._connectPromise) return this._connectPromise;
+    this._connectPromise = this._doConnect(config).finally(() => {
+      this._connectPromise = null;
+    });
+    return this._connectPromise;
+  }
+
+  async _doConnect(config) {
     this.config = config;
 
     try {
-      // Close existing client if any. Skip the close-emits-reconnect loop by
-      // dropping our reference first.
+      // Any scheduled auto-reconnect would just race with us - cancel it.
+      this.clearReconnectInterval();
+      this.isReconnecting = false;
+
+      // Close existing client if any. Drop our reference first so the
+      // socket 'close' handler we registered does not schedule yet another
+      // reconnect on top of this one.
       if (this.client) {
         const oldClient = this.client;
         this.client = null;
+        this.connected = false;
         try {
           await this._closeClient(oldClient);
         } catch (err) {
           console.log('Error closing existing connection:', err.message);
         }
+        // Brief grace for the Marstek to register the slot as free before we
+        // claim it again. On devices with native Modbus TCP this prevents
+        // the new socket from being rejected (or accepted-then-dropped).
+        await new Promise((resolve) => setTimeout(resolve, ModbusClient.CLOSE_GRACE_MS));
       }
 
       this.client = new ModbusRTU();
@@ -89,6 +125,12 @@ class ModbusClient extends EventEmitter {
       return true;
     } catch (error) {
       this.connected = false;
+      // If our half-open ModbusRTU is around, make sure it does not survive.
+      if (this.client) {
+        const failedClient = this.client;
+        this.client = null;
+        this._closeClient(failedClient).catch(() => {});
+      }
       this.emit('error', error);
       return false;
     }
@@ -159,6 +201,14 @@ class ModbusClient extends EventEmitter {
 
     this.reconnectInterval = setTimeout(async () => {
       this.reconnectInterval = null;
+      // If another path already opened a connection between scheduling and
+      // firing (e.g. a user write triggered connectModbus), do not start a
+      // second one - connect() would idempotently no-op anyway, but skipping
+      // here avoids the noisy "Attempting reconnection" log line.
+      if (this.connected || this._connectPromise) {
+        this.isReconnecting = false;
+        return;
+      }
       if (this.config) {
         console.log(`Attempting reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         const success = await this.connect(this.config);
@@ -179,7 +229,7 @@ class ModbusClient extends EventEmitter {
     }
   }
 
-  forceReconnect() {
+  async forceReconnect() {
     console.log('Forcing immediate reconnection');
 
     this.clearReconnectInterval();
@@ -189,14 +239,19 @@ class ModbusClient extends EventEmitter {
     this.client = null;
     this.connected = false;
 
-    this._closeClient(oldClient).catch(() => {});
+    // Actually wait for the old socket to be fully torn down before claiming
+    // the device's slot again - the whole point of a forced reconnect.
+    try {
+      await this._closeClient(oldClient);
+    } catch (e) {
+      // best-effort: continue regardless
+    }
+    await new Promise((resolve) => setTimeout(resolve, ModbusClient.CLOSE_GRACE_MS));
 
-    // Small delay for cleanup before reconnecting.
-    setTimeout(() => {
-      if (this.config) {
-        this.connect(this.config);
-      }
-    }, 1000);
+    if (this.config) {
+      return this.connect(this.config);
+    }
+    return false;
   }
 
   async readHoldingRegisters(slaveId, address, quantity, retries = 2) {
@@ -269,15 +324,23 @@ class ModbusClient extends EventEmitter {
     return this.connected;
   }
 
-  disconnect() {
+  async disconnect() {
     this.clearReconnectInterval();
+    this.isReconnecting = false;
 
     const oldClient = this.client;
     this.client = null;
     this.connected = false;
     this.config = null;
 
-    this._closeClient(oldClient).catch(() => {});
+    // Properly await the close so a caller that disconnects then immediately
+    // creates a new ModbusClient (or this same one is reused) does not race
+    // with a still-in-flight FIN/ACK.
+    try {
+      await this._closeClient(oldClient);
+    } catch (e) {
+      // best-effort: nothing useful to do
+    }
   }
 
   // Utility functions
