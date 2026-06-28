@@ -614,10 +614,6 @@ async writeDeviceName(name, config) {
       console.log('Get battery health [slave '+slaveId+']')
       await this.processBatteryHealth(slaveId);
 
-      // Read system health data
-      console.log('Get system health [slave '+slaveId+']')
-      await this.processBatteryHealth(slaveId);
-
       // Read system operation status registers
       console.log('Get system data [slave '+slaveId+']')
       await this.processSystemData(slaveId);
