@@ -12,22 +12,19 @@ class ModbusClient extends EventEmitter {
     this.reconnectInterval = null;
     this.config = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 30; // Lenient max (~4h with 5-60s backoff) before
-                                     // we give up and the device goes unavailable.
-                                     // Was 10 in v1.3.18, then removed in v1.3.19
-                                     // (indefinite). Restored here as a bounded
-                                     // exit so a truly dead device produces a
-                                     // user-visible state instead of an infinite
-                                     // reconnect storm.
-    this.reconnectDelay = 5000;     // Start with 5 seconds.
-    this.maxReconnectDelay = 60000; // Cap at 60s (was raised to 5min in v1.3.19
-                                     // to pair with indefinite retries; reverted
-                                     // with the give-up cap restored).
+    // Lenient max attempts (~4h with 5-60s exponential backoff) before we
+    // give up and the device goes unavailable. v1.3.4 used 10 which gave up
+    // after ~7 minutes, requiring a manual app restart for any transient
+    // network blip. v1.3.19 removed the ceiling entirely (indefinite retry)
+    // but that combined badly with the also-introduced forceReconnect-on-
+    // timeouts to produce eternal reconnect storms. 30 is a middle ground:
+    // a truly dead device produces a user-visible unavailable state, but a
+    // 2-hour ISP outage still recovers without intervention.
+    this.maxReconnectAttempts = 30;
+    this.reconnectDelay = 5000; // Start with 5 seconds
+    this.maxReconnectDelay = 60000; // Max 60 seconds
     this.isReconnecting = false;
-    // Used by _classifyError to differentiate "slave never answered" from
-    // "slave answered before and has now stopped" - the former is almost
-    // always a misconfigured slave_id, the latter is the device going away.
-    this._hasEverSucceeded = false;
+
     // Promise-chain mutex: every wire-touching call (read/write) goes through
     // _serialize() so two operations can never be in flight on the same TCP
     // connection. Without this, a slow-poll read and a user-driven write can
@@ -43,6 +40,10 @@ class ModbusClient extends EventEmitter {
     // with native Modbus TCP only allow one client at a time - an orphaned
     // socket keeps the device's only slot occupied until TCP TIME_WAIT clears.
     this._connectPromise = null;
+    // Used by _classifyError to differentiate "slave never answered" from
+    // "slave answered before and has now stopped" - the former is almost
+    // always a misconfigured slave_id, the latter is the device going away.
+    this._hasEverSucceeded = false;
   }
 
   // TCP cleanup grace after a close() before we open the next socket. The
@@ -231,7 +232,7 @@ class ModbusClient extends EventEmitter {
     }
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log(`Max reconnection attempts (${this.maxReconnectAttempts}) reached - giving up. Device will go unavailable; restart the app or fix connectivity to recover.`);
+      console.log('Max reconnection attempts reached. Giving up.');
       this.emit('error', new Error('Max reconnection attempts reached'));
       return;
     }
@@ -239,7 +240,7 @@ class ModbusClient extends EventEmitter {
     this.isReconnecting = true;
     this.reconnectAttempts++;
 
-    // Exponential backoff: delay * 2^(attempts-1), capped at maxReconnectDelay.
+    // Exponential backoff: delay * 2^(attempts-1), capped at maxReconnectDelay
     const delay = Math.min(
       this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1),
       this.maxReconnectDelay
@@ -312,7 +313,7 @@ class ModbusClient extends EventEmitter {
         try {
           this.client.setID(slaveId || 1);
           const response = await this.client.readHoldingRegisters(address, quantity);
-          this._onWireSuccess();
+          this._hasEverSucceeded = true;
           // Preserve the modbus-stream return shape (array of buffers) so
           // existing device.js callers that do Buffer.concat([...]) keep working.
           return [response.buffer];
@@ -339,7 +340,7 @@ class ModbusClient extends EventEmitter {
         try {
           this.client.setID(slaveId || 1);
           await this.client.writeRegister(address, value);
-          this._onWireSuccess();
+          this._hasEverSucceeded = true;
           return;
         } catch (err) {
           const { tag } = this._classifyError(err);
@@ -367,21 +368,10 @@ class ModbusClient extends EventEmitter {
         return v;
       });
 
-      try {
-        this.client.setID(slaveId || 1);
-        await this.client.writeRegisters(address, regs);
-        this._onWireSuccess();
-      } catch (err) {
-        throw err;
-      }
+      this.client.setID(slaveId || 1);
+      await this.client.writeRegisters(address, regs);
+      this._hasEverSucceeded = true;
     });
-  }
-
-  // Flag flipped on the first successful read/write. Used by _classifyError
-  // to differentiate "slave never answered" (probably wrong slave_id) from
-  // "slave answered before and has now stopped" (transient device issue).
-  _onWireSuccess() {
-    this._hasEverSucceeded = true;
   }
 
   isConnected() {

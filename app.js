@@ -31,7 +31,7 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
     // would open a parallel TCP socket to the same device and compete with
     // the device's own poller for the single slot. All diagnostic endpoints
     // below delegate through the matching device's existing ModbusClient,
-    // which is mutex-protected (v1.3.12) and lifecycle-clean (v1.3.15).
+    // which is mutex-protected and lifecycle-clean.
   }
 
   /**
