@@ -34,28 +34,33 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
-   * Get all Venus battery devices
-   * Used by the settings page to list available devices
+   * Get all Marstek battery devices across all drivers (venus + duravolt).
+   * Used by the settings page to list available devices.
    */
   getVenusDevices() {
-    const driver = this.homey.drivers.getDriver('venus');
-    if (!driver) {
-      return [];
+    const driverIds = ['venus', 'duravolt'];
+    const out = [];
+    for (const id of driverIds) {
+      const driver = this.homey.drivers.getDriver(id);
+      if (!driver) continue;
+      for (const device of driver.getDevices()) {
+        out.push({
+          id: device.getData().id,
+          name: device.getName(),
+          driver: id,
+          ip: device.getSetting('ip'),
+          port: device.getSetting('port'),
+          slaveId: device.getSetting('slave_id'),
+        });
+      }
     }
-
-    const devices = driver.getDevices();
-    return devices.map(device => ({
-      id: device.getData().id,
-      name: device.getName(),
-      ip: device.getSetting('ip'),
-      port: device.getSetting('port'),
-      slaveId: device.getSetting('slave_id')
-    }));
+    return out;
   }
 
   /**
    * Diagnostic: return the mode-events ringbuffer for a device.
-   * Used by the settings page to inspect write→stable-read latency.
+   * Only the venus driver implements this (write→stable-read latency tracking
+   * for force-mode writes); the duravolt driver does not.
    */
   getModeEvents(deviceId) {
     const device = this.getVenusDeviceById(deviceId);
@@ -77,16 +82,18 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
-   * Get a Venus device by its ID
+   * Find a device by ID, searching both venus and duravolt drivers.
+   * Name retained for backwards-compat with existing settings-page code.
    */
   getVenusDeviceById(deviceId) {
-    const driver = this.homey.drivers.getDriver('venus');
-    if (!driver) {
-      return null;
+    const driverIds = ['venus', 'duravolt'];
+    for (const id of driverIds) {
+      const driver = this.homey.drivers.getDriver(id);
+      if (!driver) continue;
+      const device = driver.getDevices().find(d => d.getData().id === deviceId);
+      if (device) return device;
     }
-
-    const devices = driver.getDevices();
-    return devices.find(device => device.getData().id === deviceId);
+    return null;
   }
 
   /**

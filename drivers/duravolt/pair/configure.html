@@ -1,0 +1,79 @@
+<h1>Marstek Duravolt / Venus D Connection</h1>
+<p>
+    This driver is for the Marstek <strong>Duravolt</strong> (also known as Venus D) hybrid battery
+    with built-in PV inverter. If you have a Venus E or V3 battery, please use the
+    "Venus Battery" driver instead — Duravolt has a different Modbus register layout and the
+    drivers are not interchangeable.
+</p>
+<p style="font-size: 0.9em; color: #666;">
+    Duravolt officially speaks Modbus RTU over RS485 baud 115200. To connect it to Homey
+    over the network you can either use a Modbus TCP-to-RS485 gateway (EW11, Waveshare) or,
+    on recent firmware, the Duravolt's built-in Ethernet port if it supports native Modbus TCP.
+</p>
+
+<fieldset>
+    <legend>Connection Settings</legend>
+
+    <div class="field row">
+        <label for="ip">IP Address</label>
+        <input id="ip" type="text" value="192.168.1.100" placeholder="192.168.1.100" />
+    </div>
+    <div class="field row">
+        <label for="port">Port</label>
+        <input id="port" type="number" value="502" min="1" max="65535" />
+    </div>
+    <div class="field row">
+        <label for="slave_id">Slave ID</label>
+        <input id="slave_id" type="number" value="1" min="1" max="247" />
+    </div>
+</fieldset>
+
+<button id="test_btn" class="right">Test &amp; Add</button>
+
+<script type="text/javascript">
+    var ipElement = document.getElementById('ip');
+    var portElement = document.getElementById('port');
+    var slaveIdElement = document.getElementById('slave_id');
+    var testBtn = document.getElementById('test_btn');
+
+    testBtn.addEventListener('click', function(e) {
+        var ip = ipElement.value.trim();
+        var port = parseInt(portElement.value) || 502;
+        var slaveId = parseInt(slaveIdElement.value) || 1;
+
+        if (!ip) {
+            Homey.alert('Please enter an IP address.');
+            return;
+        }
+
+        Homey.showLoadingOverlay();
+        Homey.emit('test_connection', { ip: ip, port: port, slave_id: slaveId })
+            .then(function(result) {
+                Homey.hideLoadingOverlay();
+                if (result.success) {
+                    Homey.createDevice({
+                        name: 'Duravolt' + (result.deviceName ? ' (' + result.deviceName + ')' : ''),
+                        data: {
+                            id: 'duravolt_' + Date.now().toString(36)
+                        },
+                        settings: {
+                            ip: ip,
+                            port: port,
+                            slave_id: slaveId,
+                            poll_interval: 5000
+                        }
+                    })
+                    .then(function() { Homey.done(); })
+                    .catch(function(err) {
+                        Homey.alert('Error adding device: ' + err.message);
+                    });
+                } else {
+                    Homey.alert('Connection failed: ' + result.message);
+                }
+            })
+            .catch(function(err) {
+                Homey.hideLoadingOverlay();
+                Homey.alert('Connection test failed: ' + (err.message || err));
+            });
+    });
+</script>

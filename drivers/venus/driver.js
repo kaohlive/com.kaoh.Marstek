@@ -214,11 +214,25 @@ registerFlowCardActions() {
           return { success: false, message: 'Could not connect to device' };
         }
 
-        // Try reading the device name register to verify the Marstek battery responds
-        await client.readHoldingRegisters(data.slave_id, 31000, 1);
+        // Read the full device name (10 registers / 20 ASCII bytes) so we can
+        // refuse Duravolt hardware up front. Duravolt has a completely
+        // different Modbus register map (30xxx/34xxx/37xxx ranges plus
+        // dedicated MPPT registers) and only ~2 of our register reads happen
+        // to overlap, producing a barely-working device that frustrates the
+        // user. The dedicated "Duravolt / Venus D" driver handles those.
+        const reg_name = await client.readHoldingRegisters(data.slave_id, 31000, 10);
+        const deviceName = ModbusClient.bufferToString(reg_name).trim();
+        const lower = deviceName.toLowerCase();
         client.disconnect();
 
-        this.log('Connection test successful');
+        if (lower.startsWith('vnsd') || lower.startsWith('vnpd') || lower.includes('duravolt')) {
+          return {
+            success: false,
+            message: `This device identifies as "${deviceName}" which is a Marstek Duravolt / Venus D. Please pair it with the "Duravolt / Venus D" driver instead — it uses a different Modbus register layout that this driver does not support.`,
+          };
+        }
+
+        this.log(`Connection test successful: detected "${deviceName}"`);
         return { success: true };
       } catch (err) {
         this.log('Connection test failed:', err.message);
