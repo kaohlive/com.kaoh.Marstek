@@ -1,14 +1,14 @@
-<h1>Marstek Duravolt / Venus D Connection</h1>
+<h1>Marstek Venus D Connection</h1>
 <p>
-    This driver is for the Marstek <strong>Duravolt</strong> (also known as Venus D) hybrid battery
-    with built-in PV inverter. If you have a Venus E or V3 battery, please use the
-    "Venus Battery" driver instead — Duravolt has a different Modbus register layout and the
-    drivers are not interchangeable.
+    This driver is for the Marstek <strong>Venus D</strong> hybrid battery with built-in PV
+    inverter. Some resellers market this device as "Duravolt" — same hardware, same driver.
+    If you have a Venus E or V3 battery, please use the "Venus Battery" driver instead —
+    Venus D has a different Modbus register layout and the drivers are not interchangeable.
 </p>
 <p style="font-size: 0.9em; color: #666;">
-    Duravolt officially speaks Modbus RTU over RS485 baud 115200. To connect it to Homey
+    Venus D officially speaks Modbus RTU over RS485 baud 115200. To connect it to Homey
     over the network you can either use a Modbus TCP-to-RS485 gateway (EW11, Waveshare) or,
-    on recent firmware, the Duravolt's built-in Ethernet port if it supports native Modbus TCP.
+    on recent firmware, the Venus D's built-in Ethernet port if it supports native Modbus TCP.
 </p>
 
 <fieldset>
@@ -52,9 +52,9 @@
                 Homey.hideLoadingOverlay();
                 if (result.success) {
                     Homey.createDevice({
-                        name: 'Duravolt' + (result.deviceName ? ' (' + result.deviceName + ')' : ''),
+                        name: 'Venus D' + (result.deviceName ? ' (' + result.deviceName + ')' : ''),
                         data: {
-                            id: 'duravolt_' + Date.now().toString(36)
+                            id: 'venusd_' + Date.now().toString(36)
                         },
                         settings: {
                             ip: ip,

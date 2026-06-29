@@ -34,11 +34,11 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
-   * Get all Marstek battery devices across all drivers (venus + duravolt).
+   * Get all Marstek battery devices across all drivers (venus + venusd).
    * Used by the settings page to list available devices.
    */
   getVenusDevices() {
-    const driverIds = ['venus', 'duravolt'];
+    const driverIds = ['venus', 'venusd'];
     const out = [];
     for (const id of driverIds) {
       const driver = this.homey.drivers.getDriver(id);
@@ -60,7 +60,7 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   /**
    * Diagnostic: return the mode-events ringbuffer for a device.
    * Only the venus driver implements this (write→stable-read latency tracking
-   * for force-mode writes); the duravolt driver does not.
+   * for force-mode writes); the venusd driver does not.
    */
   getModeEvents(deviceId) {
     const device = this.getVenusDeviceById(deviceId);
@@ -82,11 +82,11 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
-   * Find a device by ID, searching both venus and duravolt drivers.
+   * Find a device by ID, searching both venus and venusd drivers.
    * Name retained for backwards-compat with existing settings-page code.
    */
   getVenusDeviceById(deviceId) {
-    const driverIds = ['venus', 'duravolt'];
+    const driverIds = ['venus', 'venusd'];
     for (const id of driverIds) {
       const driver = this.homey.drivers.getDriver(id);
       if (!driver) continue;

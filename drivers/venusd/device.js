@@ -3,7 +3,7 @@
 const Homey = require('homey');
 const ModbusClient = require('../../api/ModbusClient');
 
-// Marstek Duravolt / Venus D device.
+// Marstek Venus D device (also marketed by some resellers as "Duravolt").
 //
 // Phase 1 scope: read-only minimal driver that proves the connect path and
 // validates the two registers we already know work on Venus D from the
@@ -12,8 +12,10 @@ const ModbusClient = require('../../api/ModbusClient');
 // "VNSD-0"). Adding more reads happens phase-by-phase with tester
 // validation between each step.
 //
-// Register map for Duravolt (per ViperRNMC HA project, to be validated
-// against the Duravolt PDF in documentation/):
+// Register map for Venus D (per ViperRNMC HA project, to be validated
+// against the official Duravolt-Plug-in-Battery-Modbus.pdf in
+// documentation/ - the tables there are rasterised so they couldn't be
+// extracted in this pass, see commit message for plan):
 //   31000  device name (10 registers / 20 ASCII bytes)
 //   31101  firmware version (timeouts on tested fw 149 - SKIP for now)
 //   32105  battery rated capacity in 0.001 kWh (we have this working)
@@ -29,10 +31,10 @@ const ModbusClient = require('../../api/ModbusClient');
 // 34002 - if it works on our tester we add it to the visible capabilities;
 // if it times out we drop it for now and revisit in Phase 2.
 
-class DuravoltDevice extends Homey.Device {
+class VenusDDevice extends Homey.Device {
 
   async onInit() {
-    this.log('DuravoltDevice has been initialized');
+    this.log('VenusDDevice has been initialized');
 
     this._isDeleted = false;
     this.settings = this.getSettings();
@@ -174,7 +176,7 @@ class DuravoltDevice extends Homey.Device {
         this.log('Firmware read failed (Duravolt fw 149 is known to time out here):', e.message);
       }
 
-      this.log(`Detected Duravolt: name="${deviceName}" capacity=${this.batteryCapacity}kWh firmware=${firmwareVersion}`);
+      this.log(`Detected Venus D: name="${deviceName}" capacity=${this.batteryCapacity}kWh firmware=${firmwareVersion}`);
 
       this._setSettingsSafe({
         storage_capacity: this.batteryCapacity + ' kwh',
@@ -205,9 +207,9 @@ class DuravoltDevice extends Homey.Device {
 
     try {
       const slaveId = this.settings.slave_id || 1;
-      console.log('[Duravolt] Polling slave', slaveId);
+      console.log('[VenusD] Polling slave', slaveId);
 
-      // Phase 1: try SOC at the Duravolt-specific register 34002 (Venus E
+      // Phase 1: try SOC at the Venus D-specific register 34002 (Venus E
       // uses 32104). If this works on the tester we know our register-map
       // hypothesis holds and Phase 2 can proceed with confidence.
       try {
@@ -241,7 +243,7 @@ class DuravoltDevice extends Homey.Device {
   }
 
   async onDeleted() {
-    this.log('DuravoltDevice deleted');
+    this.log('VenusDDevice deleted');
     this._isDeleted = true;
     this.stopPolling();
     this.disconnectModbus();
@@ -283,4 +285,4 @@ class DuravoltDevice extends Homey.Device {
   }
 }
 
-module.exports = DuravoltDevice;
+module.exports = VenusDDevice;

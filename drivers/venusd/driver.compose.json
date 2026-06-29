@@ -1,6 +1,6 @@
 {
   "name": {
-    "en": "Duravolt / Venus D"
+    "en": "Venus D"
   },
   "platforms": [
     "local"
@@ -16,9 +16,9 @@
   },
   "class": "battery",
   "images": {
-    "large": "/drivers/duravolt/assets/images/large.png",
-    "small": "/drivers/duravolt/assets/images/small.png",
-    "xlarge": "/drivers/duravolt/assets/images/xlarge.png"
+    "large": "/drivers/venusd/assets/images/large.png",
+    "small": "/drivers/venusd/assets/images/small.png",
+    "xlarge": "/drivers/venusd/assets/images/xlarge.png"
   },
   "pair": [
     {
@@ -164,7 +164,7 @@
           },
           "value": "192.168.1.100",
           "hint": {
-            "en": "IP address of the Duravolt (direct Modbus TCP) or your Modbus TCP-to-RS485 gateway (EW11, Waveshare)"
+            "en": "IP address of the Venus D (direct Modbus TCP) or your Modbus TCP-to-RS485 gateway (EW11, Waveshare). Some resellers market the Venus D as 'Duravolt'."
           }
         },
         {

@@ -466,16 +466,17 @@ async writeDeviceName(name, config) {
       // V3 devices typically have names like "AC01", while V1/V2 have "limited", "BI_2.5_2.5", etc.
       const deviceNameLower = deviceName.toLowerCase().trim();
 
-      // Guard: Duravolt / Venus D uses a different Modbus register layout
-      // (30xxx / 34xxx / 37xxx ranges plus dedicated MPPT registers). About
-      // two of our register reads happen to overlap (31000 device name,
-      // 32105 capacity) which is exactly the partial-success pattern we
-      // saw on the Duravolt tester ("first two values update then nothing").
-      // Stop here and direct the user to re-pair with the Duravolt driver
-      // instead of letting them fight unexplained timeouts forever.
+      // Guard: Venus D (sometimes marketed as "Duravolt") uses a different
+      // Modbus register layout (30xxx / 34xxx / 37xxx ranges plus dedicated
+      // MPPT registers). About two of our register reads happen to overlap
+      // (31000 device name, 32105 capacity) which is exactly the partial-
+      // success pattern we saw on the Venus D tester ("first two values
+      // update then nothing"). Stop here and direct the user to re-pair
+      // with the Venus D driver instead of letting them fight unexplained
+      // timeouts forever.
       if (deviceNameLower.startsWith('vnsd') || deviceNameLower.startsWith('vnpd') || deviceNameLower.includes('duravolt')) {
-        this.log(`Detected Duravolt / Venus D ("${deviceName}") on the Venus driver - this driver does not support that hardware.`);
-        this.setWarning('This is a Marstek Duravolt / Venus D, which uses a different Modbus register layout. Please remove this device and re-add it using the "Duravolt / Venus D" driver.').catch((err) => this.log('setWarning failed:', err.message));
+        this.log(`Detected Venus D ("${deviceName}") on the Venus driver - this driver does not support that hardware.`);
+        this.setWarning('This is a Marstek Venus D (also sold as "Duravolt"), which uses a different Modbus register layout. Please remove this device and re-add it using the "Venus D" driver.').catch((err) => this.log('setWarning failed:', err.message));
         this.setUnavailable('Wrong driver - see warning above').catch((err) => this.log('setUnavailable failed:', err.message));
         return;
       }
