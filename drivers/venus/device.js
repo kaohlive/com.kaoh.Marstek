@@ -220,9 +220,30 @@ async writeDeviceName(name, config) {
     }
   }
 
+  // Safe wrappers for Homey device APIs that we call fire-and-forget from
+  // poll paths. After the user deletes the device, these reject with
+  // "Device not found" and surface as unhandledRejection on the app
+  // process, cluttering support logs. Swallow after delete to keep noise
+  // down. Same pattern as the Venus D driver.
+  _setSettingsSafe(settings) {
+    return this.setSettings(settings).catch((err) => {
+      if (!this._isDeleted) this.log('setSettings failed:', err.message);
+    });
+  }
+  _setUnavailableSafe(reason) {
+    return this.setUnavailable(reason).catch((err) => {
+      if (!this._isDeleted) this.log('setUnavailable failed:', err.message);
+    });
+  }
+  _setAvailableSafe() {
+    return this.setAvailable().catch((err) => {
+      if (!this._isDeleted) this.log('setAvailable failed:', err.message);
+    });
+  }
+
   setupModbusHandlers() {
     this.modbus.on('connect', () => {
-      this.setAvailable();
+      this._setAvailableSafe();
       this.consecutiveErrors = 0; // Reset error counter on successful connection
       this.log('Connected to Modbus device');
       this.processDeviceStaticInfo(this.settings.slave_id || 1);
@@ -475,9 +496,9 @@ async writeDeviceName(name, config) {
       // with the Venus D driver instead of letting them fight unexplained
       // timeouts forever.
       if (deviceNameLower.startsWith('vnsd') || deviceNameLower.startsWith('vnpd') || deviceNameLower.includes('duravolt')) {
-        this.log(`Detected Venus D ("${deviceName}") on the Venus driver - this driver does not support that hardware.`);
+        this.log(`Detected Venus D ("${deviceName}") on the Venus E driver - this driver does not support that hardware.`);
         this.setWarning('This is a Marstek Venus D (also sold as "Duravolt"), which uses a different Modbus register layout. Please remove this device and re-add it using the "Venus D" driver.').catch((err) => this.log('setWarning failed:', err.message));
-        this.setUnavailable('Wrong driver - see warning above').catch((err) => this.log('setUnavailable failed:', err.message));
+        this._setUnavailableSafe('Wrong driver - see warning above');
         return;
       }
 
@@ -497,7 +518,7 @@ async writeDeviceName(name, config) {
       this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}", firmware: ${firmwareVersion})`);
 
       //Now store the collected info in read only settings for easy access to the user
-      this.setSettings({
+      this._setSettingsSafe({
         'storage_capacity': this.batteryCapacity + ' kwh',
         'device_name': deviceName,
         'firmware': firmwareVersion,
@@ -520,17 +541,17 @@ async writeDeviceName(name, config) {
       const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
       const charging_cutoff_soc = charging_cutoff_raw * 0.1;
       console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
-      this.setSettings({ 'charging_cutoff_soc': charging_cutoff_soc });
+      this._setSettingsSafe({ 'charging_cutoff_soc': charging_cutoff_soc });
 
       // Read discharging cutoff SOC (register 44001) - resolution 0.1%
       const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
       const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
       const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
       console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
-      this.setSettings({ 'discharging_cutoff_soc': discharging_cutoff_soc });
+      this._setSettingsSafe({ 'discharging_cutoff_soc': discharging_cutoff_soc });
     } catch (error) {
       this.log('Device static info error:', error);
-      this.setUnavailable(`Retrieval of static info failed: ${error.message}`);
+      this._setUnavailableSafe(`Retrieval of static info failed: ${error.message}`);
     }
   }
 
@@ -545,7 +566,7 @@ async writeDeviceName(name, config) {
       this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
 
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this.setUnavailable(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
+        this._setUnavailableSafe(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
       }
       return;
     }
@@ -567,7 +588,7 @@ async writeDeviceName(name, config) {
       // Successful poll - reset error counter and ensure device is marked available
       this.consecutiveErrors = 0;
       if (!this._isDeleted && !this.getAvailable()) {
-        this.setAvailable();
+        this._setAvailableSafe();
       }
 
     } catch (error) {
@@ -576,7 +597,7 @@ async writeDeviceName(name, config) {
 
       // Only mark unavailable after multiple consecutive failures
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this.setUnavailable(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
+        this._setUnavailableSafe(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
       }
     }
   }

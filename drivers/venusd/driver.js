@@ -50,7 +50,7 @@ class VenusDDriver extends Homey.Driver {
         if (lower.startsWith('vnse') || lower.startsWith('ac') || lower.startsWith('limited') || lower.includes('bi_')) {
           return {
             success: false,
-            message: `This device identifies as "${deviceName}" which is a Venus E / V3 / V1-V2 - please pair it with the "Venus Battery" driver instead, not the Venus D driver.`,
+            message: `This device identifies as "${deviceName}" which is a Venus E / V3 / V1-V2 - please pair it with the "Venus E" driver instead, not the Venus D driver.`,
           };
         }
 

@@ -1,0 +1,236 @@
+Marstek Duravolt / Venus D - Modbus Register Reference
+======================================================================
+
+Source: Community datasheet extending the official Duravolt PDF
+        'Duravolt Plug-In thuisbatterij 485 protocol v1.1'
+        Source PDF: https://duravolt.nl/wp-content/uploads/Duravolt-Plug-in-Battery-Modbus.pdf
+        Datasheet checked: 2025-08-14
+        Scanned on: firmware v153, BMS v213
+
+Protocol:
+  Standard Modbus RTU, default address 1
+  Serial: 115200 baud, 8 bits, no parity, 1 stop bit
+
+QUIRK: If a register contains more than 2 bytes of data, it MUST be
+       read in one function call (count = full byte width / 2).
+       Reading consecutive registers in separate calls returns
+       invalid data.
+
+Changelog:
+  v1.0  2024-07-30  First version
+  v1.1               Added 32104, 32105
+  v2.0  2025-07-11   Community datasheet starts here
+  v2.1  2025-07-16   Added 30001-30010, 30300-30303, 37004-37008, 41010
+  v2.2  2025-08-14   Notes for 41500, 41516, 43000, 45603-45604
+
+======================================================================
+
+This document is based on ‘Duravolt Plug-In thuisbatterij 485 protocol v1.1’, available from https://duravolt.nl/wp-content/uploads/Duravolt-Plug-in-Battery-Modbus.pdf (checked on 14-08-2025).Changes made to the document are highlighted in red (except for typo’s). Scans are made on firmware v153 and BMS v213.
+Protocol specification:
+Standard Modbus RTU Protocol
+Modbus default Address: 1
+baud:115200, 8bit, No parity bit, 1bit Stopbit
+Quirk: If register contains more than 2 bytes of data, data should be read in one function call instead of consecutive calls to consecutive registers or it will be invalid. Therefore if any data is present, one can deduct where a range must be split. If data is zeroes, the range is left and appended with a ‘?’.
+Version	Date	Change
+v2.0	07/11/25	Create document based on Duravolt document
+v2.1	07/16/25	Added registers 30001, 30002, 30004, 30005, 30006, 30008, 30009, 30010, 30300, 30301, 30302, 30303, 37004, 37005, 37006, 37007, 37008, 41010. Added notes on 30007, 30100, 30600, 36101, 37013
+v2.2	08/14/25	Added observerations for some unknown registers. Changed error registers based on educated guesses. Identified register 41001. Added notes for registers 41500, 41516, 43000, 45603, 45604.
+Function	ID (DEC)	ID (HEX)	Name	Bytes	Value type	Gain / Unit	Description
+0x03	30000	7530	Unknown	2	unknown	unknown	142-145 (DEC) osc, mostly 143-144, more activity 144-145 when charging
+30001	7531	Battery voltage (average)	2	u16	0,01 V	Same as 32100	5120 (DEC)
+30002	7532	Battery current (average)	2	s16	0,01 A	Same as 32101	1502 (DEC)
+30003	7533	Unknown	2	unknown	unknown	Corresponds to AC Voltage added with Power?
+30004	7534	AC voltage	2	u16	0,1 V	Same as 32200	2200 (DEC)
+30005	7535	AC current	2	u16	0,01 A	Same as 32201	350 (DEC)
+30006	7536	AC offgrid voltage	2	u16	0,1 V	Same as 32300	2200 (DEC)
+30007	7537	Unknown	2	unknown	unknown	Related to status? Rapid osc. between 1 and 2 when charge, 1 when backup, 0 when idle. Also random osc. between 0 and 1 when idle
+30008	7538	Internal MOS1 temperature	2	s16	0,1 °C	Same as 35001	257 (DEC)
+30009	7539	Internal MOS2 temperature	2	s16	0,1 °C	Same as 35002	257 (DEC)
+30010	753A	Internal temperature	2	s16	0,1 °C	Same as 35000	373 (DEC)
+30100	7594	Unknown	8?	unknown	unknown	Same as 36100
+30200	75F8	Unknown	8?	unknown	unknown	Always seen 0
+30300	765C	WiFi status	2	u16	/	0:disconnected, 1:connected
+30301	765D	BT status	2	u16	/	0:off, 1:active_after_boot?stand-by?, 2:connected, 3:active
+30302	765E	Cloud status	2	u16	/	0:disconnected, 1:connected, Approx 5 min delay after connection loss
+30303	765F	WiFi Signal Strength	2	u16	dBm
+30399	76BF	BMS version (HEX)	2	u16	/	Same as 31102 (but in HEX)	0xD5 (HEX)
+30400	76C0	Software version (HEX)	2	u16	0,01	Same as 31100 (but in HEX)	0x67 (HEX)
+30401	76C1	Firmware version (HEX)	2	u16	/	Same as 31101 (but in HEX)	0x99 (HEX)
+30402	76C2	Device MAC address	12	char	/
+30500	7724	Unknown	2	unknown	unknown	Always seen 1
+30600	7788	Unknown	2	unknown	unknown	00Ca when idle, 00cc/00cb when bypass, 0xd4 when backup, 00ce when (dis)charge, sometime 0xd7 when empty followed by charge, or 0xd8
+30700	77EC	Unknown	2	unknown	unknown	Changed to 1 some time after empty and stayed 1 even after full. Turned 0 after messing around when 100 soc, self-test fault?
+30800	7850	Communication module firmware version	12	char	/
+31000	7918	Device name	20	char	/	Typically: BI_2.5_2.5 or AC01
+31100	797C	Soft version	2	u16	0,01	103 (DEC)	1,03
+31101	797D	Firmware version	2	u16	/	153 (DEC)	153
+31102	797E	BMS version	2	u16	/	213 (DEC)	213
+31200	79E0	SN code	20	char	/	Typically: [empty]
+32100	7D64	Battery voltage (average)	2	u16	0,01 V	5120 (DEC)	51,2 V
+32101	7D65	Battery current (average)	2	s16	0,01 A	1502 (DEC)	15,02 A
+32102	7D66	Battery power	4	s32	1 W	2500 (DEC)	2500 W
+32104	7D68	Battery SOC	2	u16	1 %	500 (DEC)	50 %
+32105	7D69	Battery total energy	2	u16	0,001 kWh	Unit: v148: 0.001 / v147: 0.01	2500 (DEC)
+32200	7DC8	AC voltage	2	u16	0,1 V	2200 (DEC)	220 V
+32201	7DC9	AC current	2	u16	0,01 A	350 (DEC)	3,5 A
+32202	7DCA	AC power	4	s32	W	Positive value means feeds power into the grid	1000 (DEC)
+32204	7DCC	AC frequency	2	u16	0,01 Hz	5000 (DEC)	50 Hz
+32300	7E2C	AC offgrid voltage	2	u16	0,1 V	2200 (DEC)	220 V
+32301	7E2D	AC offgrid current	2	u16	0,1 A	350 (DEC)	3,5 A
+32302	7E2E	AC offgrid power	4	s32	W	1000 (DEC)	1000 W
+33000	80E8	Total charging energy	4	u32	0,01 kWh	100000 (DEC)	1000 kWh
+33002	80EA	Total discharging energy	4	u32	0,01 kWh	100000 (DEC)	1000 kWh
+33004	80EC	Daily charging energy	4	u32	0,01 kWh	Updated daily at 00:00	500 (DEC)
+33006	80EE	Daily discharging energy	4	u32	0,01 kWh	Updated daily at 00:00	2000 (DEC)
+33008	80F0	Monthly charging energy	4	u32	0,01 kWh	Updated on 1st of each month	10000 (DEC)
+33010	80F2	Monthly discharging energy	4	u32	0,01 kWh	Updated on 1st of each month	10000 (DEC)
+35000	88B8	Internal temperature	2	s16	0,1 °C	373 (DEC)	37,3 °C
+35001	88B9	Internal MOS1 temperature	2	s16	0,1 °C	257 (DEC)	25,7 °C
+35002	88BA	Internal MOS2 temperature	2	s16	0,1 °C	257 (DEC)	25,7 °C
+35010	88C2	Max cell temperature	2	s16	0,1 °C	Unit: BMS v213: 1°C	-32 (DEC)
+35011	88C3	Min cell temperature	2	s16	0,1 °C	Unit: BMS v213: 1°C	400 (DEC)
+35100	891C	Inverter state	2	u16	/	0:sleep, 1:stand-by, 2:charge, 3:discharge, 4:backup mode, 5:OTA upgrade, 6:bypass	2
+35110	8926	Battery charge voltage limit	2	u16	0,1 V	Typically: 57,1 V	120 (DEC)
+35111	8927	Battery charge current limit	2	u16	0,1 A	50 (DEC)	5 A
+35112	8928	Battery discharge current limit	2	u16	0,1 A	50 (DEC)	5 A
+36000	8CA0	Unknown	2	unknown	unknown	Alarm/fault register
+36001	8CA1	Unknown	2	unknown	unknown	Alarm/fault register
+36100	8D04	Alarm word	2	bit	/	See below (educated guess, see notes below)
+PLL Abnormal restart	0	bit	/	0:normal, 1:abnormal
+Overtemperature limit	1	bit	/	0:normal, 1:abnormal
+Low temperature limit	2	bit	/	0:normal, 1:abnormal
+Fan abnormal warning	3	bit	/	0:normal, 1:abnormal
+Low battery SoC warning	4	bit	/	0:normal, 1:abnormal
+Output overcurrent warning	5	bit	/	0:normal, 1:abnormal
+Abnormal line sequence detection	6	bit	/	0:normal, 1:abnormal
+36101	8D05	Fault word	2	bit	/	See below (educated guess, see notes below)
+Hardware bus overvoltage	0	bit	/	0:normal, 1:abnormal
+Hardware output overcurrent	1	bit	/	0:normal, 1:abnormal
+Hardware trans overcurrent	2	bit	/	0:normal, 1:abnormal
+Hardware battery overcurrent	3	bit	/	0:normal, 1:abnormal
+Hardware protection	4	bit	/	0:normal, 1:abnormal
+Output overcurrent warning	5	bit	/	0:normal, 1:abnormal
+High voltage bus overvoltage	6	bit	/	0:normal, 1:abnormal
+High voltage bus undervoltage	7	bit	/	0:normal, 1:abnormal
+Overpower protection	8	bit	/	0:normal, 1:abnormal
+FSM abnormal	9	bit	/	0:normal, 1:abnormal
+Overtemperature protection	10	bit	/	0:normal, 1:abnormal
+Inverter soft start timeout	11	bit	/	0:normal, 1:abnormal
+36102	8D06	Unknown	2	unknown	unknown	Alarm/fault register
+36103	8D07	Fault word	1	bit	/	See below (educated guess, see notes below)
+Battery overvoltage	0	bit	/	0:normal, 1:abnormal
+Battery undervoltage	1	bit	/	0:normal, 1:abnormal
+Battery overcurrent	2	bit	/	0:normal, 1:abnormal
+Battery low SoC	3	bit	/	0:normal, 1:abnormal
+Battery communication failure	4	bit	/	0:normal, 1:abnormal
+BMS protect	5	bit	/	0:normal, 1:abnormal
+The registers below are from the original documentation and kept as reference until we are definitely sure how the registers work
+36000	8CA0	Alarm word	2	bit	/	See below (probably incorrect!)
+PLL Abnormal restart	0	bit	/	0:normal, 1:abnormal
+Overtemperature limit	1	bit	/	0:normal, 1:abnormal
+Low temperature limit	2	bit	/	0:normal, 1:abnormal
+Fan abnormal warning	3	bit	/	0:normal, 1:abnormal
+Low battery SoC warning	4	bit	/	0:normal, 1:abnormal
+Output overcurrent warning	5	bit	/	0:normal, 1:abnormal
+Abnormal line sequence detection	6	bit	/	0:normal, 1:abnormal
+36001	8CA1	Fault word	2	bit	/	See below (probably incorrect!)
+WiFi abnormal	0	bit	/	0:normal, 1:abnormal
+BLE abnormal	1	bit	/	0:normal, 1:abnormal
+Network abnormal	2	bit	/	0:normal, 1:abnormal
+CT connection abnormal	3	bit	/	0:normal, 1:abnormal
+36100	8D04	Fault word	2	bit	/	See below (probably incorrect!)
+Grid overvoltage	0	bit	/	0:normal, 1:abnormal
+Grid undervoltage	1	bit	/	0:normal, 1:abnormal
+Grid overfrequency	2	bit	/	0:normal, 1:abnormal
+Grid underfrequency	3	bit	/	0:normal, 1:abnormal
+Grid peak voltage abnormal	4	bit	/	0:normal, 1:abnormal 36100[4]=1 some time after empty (low SoC/undervoltage?), so might be 36000
+Current Dcover	5	bit	/	0:normal, 1:abnormal
+Voltage Dcover	6	bit	/	0:normal, 1:abnormal
+36101	8D05	Fault word	1	bit	/	See below (probably incorrect!) 36101[7]=1 when grid loss, but doesn’t trigger when booted w/ grid = probably ondervoltage
+Battery overvoltage	0	bit	/	0:normal, 1:abnormal
+Battery undervoltage	1	bit	/	0:normal, 1:abnormal
+Battery overcurrent	2	bit	/	0:normal, 1:abnormal
+Battery low SoC	3	bit	/	0:normal, 1:abnormal
+Battery communication failure	4	bit	/	0:normal, 1:abnormal
+BMS protect	5	bit	/	0:normal, 1:abnormal
+36102	8D06	Unknown	2	unknown	unknown
+36103	8D07	Fault word	2	bit	/	See below (probably incorrect!)
+Hardware bus overvoltage	0	bit	/	0:normal, 1:abnormal
+Hardware output overcurrent	1	bit	/	0:normal, 1:abnormal
+Hardware trans overcurrent	2	bit	/	0:normal, 1:abnormal
+Hardware battery overcurrent	3	bit	/	0:normal, 1:abnormal changes to 1 sometimes when empty, so probably aligns with 36101
+Hardware protection	4	bit	/	0:normal, 1:abnormal changes to 1 sometimes when empty, so probably aligns with 36101
+Output overcurrent warning	5	bit	/	0:normal, 1:abnormal
+High voltage bus overvoltage	6	bit	/	0:normal, 1:abnormal
+High voltage bus undervoltage	7	bit	/	0:normal, 1:abnormal
+Overpower protection	8	bit	/	0:normal, 1:abnormal
+FSM abnormal	9	bit	/	0:normal, 1:abnormal
+Overtemperature protection	10	bit	/	0:normal, 1:abnormal
+Inverter soft start timeout	11	bit	/	0:normal, 1:abnormal
+36104	8D08	Fault word (absent!)	2	bit	/	See below (probably incorrect!)
+Self-test fault	0	bit	/	0:normal, 1:abnormal
+EEPROM fault	1	bit	/	0:normal, 1:abnormal
+Other system fault	2	bit	/	0:normal, 1:abnormal
+37000	9088	Unknown	2	unknown	unknown	Always seen 1
+37001	9089	Unknown	2	unknown	unknown	Always seen 0
+37002	908A	Unknown	2	unknown	unknown	Always seen 0
+37003	908B	Unknown	2	unknown	unknown	Always seen 0
+37004	908C	AC power	2	s32	W	Same as 32202	1000 (DEC)
+37005	908D	Battery SOC	2	u16	1 %	Same as 32104	500 (DEC)
+37006	908E	Cell temperature	2	s16	0,1 °C	Same as 35010=35011	400 (DEC)
+37007	908F	Maximum cell voltage	2	u16	0,001 V
+37008	9090	Minimum cell voltage	2	u16	0,001 V
+37009	9091	Unknown	2	unknown	unknown	Always seen 0
+37010	9092	Unknown	2?	unknown	unknown	1 when empty and voltage tanks to 10 V, 0 when voltage recovers, also 0x0002 when messing with full (balancing?)
+37011	9093	Unknown	4	unknown	unknown	Aligns with b_war on MQTT. Warnings? 37012[2]=1 when charged (but not always, balancing?), 0 when starting to discharge
+37013	9095	Unknown	8?	unknown	unknown	Same as 36100
+0x03/0x06/0x10	41000	A028	Device restart	2	u16	/	0x55AA: restart
+41001	A029	Factory reset	2	u16	/	0x55AA: factory reset (clears totals)
+41010	A032	Power restriction	2	u16	/	0:unrestricted, 1:800W limited
+41100	A08C	Modbus address	2	u16	/	Modbus address [1-255]
+41200	A0F0	Backup function	2	u16	/	Whether to enable the backup function, 0:enable, 1:disable
+41500	A21C	WiFi SSID	32	char	/	Can be set, but has no effect
+41516	A22C	WiFi Password (first 2 char)	2	char	/	Only first two characters. Can be set, but has no effect
+42000	A410	RS485 control mode	2	u16	/	Register 42000-42999 only work when this is enabled, 0x55AA:enable, 0x55BB:disable	0x55BB (HEX)
+42010	A41A	Forcible charge/discharge	2	u16	/	0:stop, 1:charge, 2:discharge
+42011	A41B	Charge to SOC	2	u16	1 %	Force (dis)charge to the target SoC and turn off when finished [11-100]. (Enabling this mode turns off the force charge and discharge mode)	500 (DEC)
+42020	A424	Forcible charge power	2	u16	W	[0-2500]	2000 (DEC)
+42021	A425	Forcible discharge power	2	u16	W	[0-2500]	2000 (DEC)
+43000	A7F8	User work mode	2	u16	/	0:manual, 1:anti-feed, 2:AI, AI can be set, but will read back as 1
+43100	A85C	Discharge time1 week	2	bit	/	bit1:Monday, bit2:Tuesday, bit3:Wednesday, bit4:Thursday, bit5:Friday, bit6:Saturday, bit7:Sunday	3 (HEX)
+43101	A85D	Discharge time1 start	2	u16	hour:min	[0-2359]	800 (DEC)
+43102	A85E	Discharge time1 end	2	u16	hour:min	[0-2359], the end time must be longer than the start time	1730 (DEC)
+43103	A85F	Discharge time1 power	2	s16	W	[-2500-2500], positive means discharge	2000 (DEC)
+43104	A860	Discharge time1 enable	2	u16	/	0:disable, 1:enable
+43105	A861	Discharge time2 week	2	bit	/	same as time1
+43106	A862	Discharge time2 start	2	u16	hour:min	same as time1
+43107	A863	Discharge time2 end	2	u16	hour:min	same as time1
+43108	A864	Discharge time2 power	2	s16	W	same as time1
+43109	A865	Discharge time2 enable	2	u16	/	same as time1
+43110	A866	Discharge time3 week	2	bit	/	same as time1
+43111	A867	Discharge time3 start	2	u16	hour:min	same as time1
+43112	A868	Discharge time3 end	2	u16	hour:min	same as time1
+43113	A869	Discharge time3 power	2	s16	W	same as time1
+43114	A86A	Discharge time3 enable	2	u16	/	same as time1
+43115	A86B	Discharge time4 week	2	bit	/	same as time1
+43116	A86C	Discharge time4 start	2	u16	hour:min	same as time1
+43117	A86D	Discharge time4 end	2	u16	hour:min	same as time1
+43118	A86E	Discharge time4 power	2	s16	W	same as time1
+43119	A86F	Discharge time4 enable	2	u16	/	same as time1
+43120	A870	Discharge time5 week	2	bit	/	same as time1
+43121	A871	Discharge time5 start	2	u16	hour:min	same as time1
+43122	A872	Discharge time5 end	2	u16	hour:min	same as time1
+43123	A873	Discharge time5 power	2	s16	W	same as time1
+43124	A874	Discharge time5 enable	2	u16	/	same as time1
+43125	A875	Discharge time6 week	2	bit	/	same as time1
+43126	A876	Discharge time6 start	2	u16	hour:min	same as time1
+43127	A877	Discharge time6 end	2	u16	hour:min	same as time1
+43128	A878	Discharge time6 power	2	s16	W	same as time1
+43129	A879	Discharge time6 enable	2	u16	/	same as time1
+44000	ABE0	Charging cutoff capacity	2	u16	1 %	[80-100] * 10	930 (DEC)
+44001	ABE1	Discharging cutoff capacity	2	u16	1 %	[12-30] * 10	150 (DEC)
+44002	ABE2	Max charge power	2	u16	W	[0-2500]	800 (DEC)
+44003	ABE3	Max discharge power	2	u16	W	[0-2500]	2000 (DEC)
+44100	AC44	Grid standards	2	unknown	/	0:Auto (220-240 V, 50/60 Hz), 1:EN50549, 2:NL, 3:DE, 4:AT, 5:UK, 6:ES, 7:PL, 8:IT, 9:CN
+45603	B223	Unknown	2	unknown	unknown	Cannot be written
+45604	B224	Unknown	2	unknown	unknown	Cannot be written

@@ -5,31 +5,42 @@ const ModbusClient = require('../../api/ModbusClient');
 
 // Marstek Venus D device (also marketed by some resellers as "Duravolt").
 //
-// Phase 1 scope: read-only minimal driver that proves the connect path and
-// validates the two registers we already know work on Venus D from the
-// earlier tester logs: 32105 (battery capacity, returned successfully
-// before subsequent reads timed out) and 31000 (device name, returned
-// "VNSD-0"). Adding more reads happens phase-by-phase with tester
-// validation between each step.
+// Phase 1 scope: read-only minimal driver - device name, capacity, SOC.
+// Adding more reads happens phase-by-phase with tester validation
+// between each step.
 //
-// Register map for Venus D (per ViperRNMC HA project, to be validated
-// against the official Duravolt-Plug-in-Battery-Modbus.pdf in
-// documentation/ - the tables there are rasterised so they couldn't be
-// extracted in this pass, see commit message for plan):
-//   31000  device name (10 registers / 20 ASCII bytes)
-//   31101  firmware version (timeouts on tested fw 149 - SKIP for now)
-//   32105  battery rated capacity in 0.001 kWh (we have this working)
-//   34002  SOC % (was at 32104 on Venus E)
-//   30100  battery voltage (was at 32100 on Venus E)
-//   30101  battery current (was at 32101 on Venus E)
-//   30006  AC power int32 (was at 32202 on Venus E)
-//   37004  AC current with scaling 0.004 (was at 32201 with 0.01/0.001 on E)
-//   30020-30040  PV / MPPT registers (NEW - not on Venus E)
+// Authoritative register map: the Duravolt v1.1 PDF (in documentation/)
+// extended with community scans on firmware v153 + BMS v213, published
+// 2025-08-14 as a Google Sheets datasheet. A local copy lives at
+// documentation/duravolt_modbus_v1.1_fw153.txt. Many registers turn
+// out to be the SAME addresses Venus E uses (the "different register
+// map" intuition from the early tester logs was overstated - the real
+// differences are PV/MPPT registers and a few scaling tweaks):
 //
-// Phase 1 reads ONLY 31000 (during pair test) and 32105 (during poll).
-// Capacity-only feels barren as a battery widget, so we also try SOC at
-// 34002 - if it works on our tester we add it to the visible capabilities;
-// if it times out we drop it for now and revisit in Phase 2.
+//   31000  device name              (20 char,  same as Venus E)
+//   31101  firmware version         (u16, exists v153+, missing on v149)
+//   32100  battery voltage          (u16 0.01V, same as Venus E)
+//   32101  battery current          (s16 0.01A, same as Venus E)
+//   32102  battery power            (s32 1W,    same as Venus E)
+//   32104  battery SOC              (u16 0.1%,  CORRECTED from 34002)
+//   32105  battery rated capacity   (u16 0.001 kWh on v148+, 0.01 on v147)
+//   32200  AC voltage               (u16 0.1V,  same as Venus E)
+//   32201  AC current               (u16 0.01A, same as Venus E)
+//   32202  AC power                 (s32 1W,    same as Venus E)
+//   32204  AC frequency             (u16 0.01Hz)
+//   32300-32302  AC offgrid (UPS)   (Venus E doesn't have this)
+//   35000-35002  internal temps     (s16 0.1C,  same as Venus E)
+//   35010-35011  cell temps         (BMS v213 changed unit to 1C)
+//   35100  inverter state           (u16, same enum as Venus E)
+//   37004  AC power (alias 32202)
+//   37005  battery SOC (alias 32104)
+//   42000  RS485 control gate       (write 0x55AA to enable 42010-43129)
+//   42010-42021  forcible (dis)charge controls (Venus E parity)
+//   43000  user work mode
+//   43100-43129  discharge schedule (6 slots)
+//   44000-44003  cutoff SoC + max power (Venus E parity)
+//
+// Phase 1 reads: 31000 (during pair test), 32105 + 32104 (during poll).
 
 class VenusDDevice extends Homey.Device {
 
@@ -166,15 +177,14 @@ class VenusDDevice extends Homey.Device {
       const reg_name = await this.modbus.readHoldingRegisters(slaveId, 31000, 10);
       const deviceName = ModbusClient.bufferToString(reg_name);
 
-      // Firmware register 31101 timed out on the only tester we have data
-      // for (Duravolt firmware 149). We attempt it but accept failure.
-      let firmwareVersion = 'unknown';
-      try {
-        const reg_fw = await this.modbus.readHoldingRegisters(slaveId, 31101, 1);
-        firmwareVersion = ModbusClient.bufferToUint16(Buffer.concat(reg_fw)).toString();
-      } catch (e) {
-        this.log('Firmware read failed (Duravolt fw 149 is known to time out here):', e.message);
-      }
+      // 31101 (firmware) is deliberately NOT read on Venus D. The register
+      // does not exist on Venus D firmware - the device responds with
+      // Modbus exception 2 (Illegal data address) and then enters the same
+      // "deaf after error" lockup state we see on V3, which kills all
+      // subsequent reads in this session. Skipping the read entirely
+      // avoids the trigger. Firmware stays "unknown" until we find a
+      // register on Venus D that actually returns it.
+      const firmwareVersion = 'unknown';
 
       this.log(`Detected Venus D: name="${deviceName}" capacity=${this.batteryCapacity}kWh firmware=${firmwareVersion}`);
 
@@ -184,9 +194,10 @@ class VenusDDevice extends Homey.Device {
         firmware: firmwareVersion,
       });
 
-      // Expose capacity as a capability so users see something in the UI
-      // right away.
-      this.setCapabilityValue('meter_power.capacity', this.batteryCapacity).catch(this.error);
+      // Rated capacity goes in the settings label above; meter_power.capacity
+      // is labelled "Stored energy available" and is owned by pollData
+      // (capacity x soc). Writing rated capacity here would briefly show
+      // the wrong value before the first SOC poll overrides it.
     } catch (error) {
       this.log('Device static info error:', error);
       this._setUnavailableSafe(`Retrieval of static info failed: ${error.message}`);
@@ -209,21 +220,27 @@ class VenusDDevice extends Homey.Device {
       const slaveId = this.settings.slave_id || 1;
       console.log('[VenusD] Polling slave', slaveId);
 
-      // Phase 1: try SOC at the Venus D-specific register 34002 (Venus E
-      // uses 32104). If this works on the tester we know our register-map
-      // hypothesis holds and Phase 2 can proceed with confidence.
+      // SOC at register 32104 (u16, scaling 0.1% - so raw 500 = 50%).
+      // Per the Duravolt v1.1 PDF + community datasheet (fw v153 scan).
+      // Earlier code used 34002 from ViperRNMC's HA project but that
+      // register isn't in the authoritative documentation - 32104 is.
+      // If 32104 fails on some firmware, register 37005 is documented
+      // as an alias ("Same as 32104").
       try {
-        const reg_soc = await this.modbus.readHoldingRegisters(slaveId, 34002, 1);
-        const soc = ModbusClient.bufferToUint16(Buffer.concat(reg_soc));
+        const reg_soc = await this.modbus.readHoldingRegisters(slaveId, 32104, 1);
+        const socRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_soc));
+        const soc = socRaw / 10;
         this.setCapabilityValue('measure_battery', soc).catch(this.error);
 
-        // Derive stored energy from SOC + capacity.
+        // Derive stored energy from SOC + capacity. This is the only
+        // writer of meter_power.capacity ("Stored energy available") -
+        // static info does NOT touch this capability, see comment there.
         if (this.batteryCapacity) {
           const stored = this.batteryCapacity * (soc / 100);
           this.setCapabilityValue('meter_power.capacity', stored).catch(this.error);
         }
       } catch (e) {
-        this.log('SOC read at 34002 failed:', e.message);
+        this.log('SOC read at 32104 failed:', e.message);
         // Do not throw - we want the polling loop to continue and let
         // counters track health. Phase 2 will add more reads and we'll
         // see which ones work.

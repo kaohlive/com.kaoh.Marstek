@@ -1,5 +1,8 @@
-<h1>Marstek Battery Connection</h1>
-<p>Enter the connection details of your Marstek battery system.</p>
+<h1>Marstek Venus E Connection</h1>
+<p>Enter the connection details of your Marstek Venus E, V3, V2 or V1 battery
+system. If you have a Marstek Venus D (sometimes marketed as "Duravolt"),
+please use the "Venus D" driver instead — it has a different Modbus register
+layout and the drivers are not interchangeable.</p>
 
 <fieldset>
     <legend>Connection Settings</legend>
@@ -42,7 +45,7 @@
                 Homey.hideLoadingOverlay();
                 if (result.success) {
                     Homey.createDevice({
-                        name: 'Marstek Battery',
+                        name: 'Marstek Venus E',
                         data: {
                             id: 'venus_battery_' + Date.now().toString(36)
                         },
