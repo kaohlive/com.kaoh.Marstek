@@ -1113,8 +1113,15 @@ async writeDeviceName(name, config) {
             )
             .catch(this.error);
         }
-      } else if (showAlarms && !hasAlarm) {
-        // Clear warning when no alarms
+      } else {
+        // Clear any stale warning. Fires in three cases:
+        //   1. showAlarms=true, hasAlarm=false: normal no-alarms state
+        //   2. showAlarms=false: policy suppresses, so any prior warning
+        //      (from earlier polls on this build, or from prior versions
+        //      that fired alarms unconditionally) must be cleared on
+        //      upgrade so V3 users don't see leftover false alarms
+        //   3. hasAlarm=true but alarms.length=0: shouldn't happen but
+        //      safe default is no warning
         this.unsetWarning();
       }
 
