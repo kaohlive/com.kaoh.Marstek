@@ -294,6 +294,24 @@
           "value": 3,
           "min": 1,
           "max": 10
+        },
+        {
+          "id": "show_alarms",
+          "type": "dropdown",
+          "label": {
+            "en": "Show fault alarms",
+            "nl": "Toon fouten"
+          },
+          "hint": {
+            "en": "Fault registers on some Marstek firmware versions (notably V3 on firmware 149) return spurious bits that trigger false alarms while the battery works fine. 'Automatic' turns fault warnings off for V3 devices and on for V1/V2 devices. Override if you know your firmware reports alarms correctly.",
+            "nl": "Foutregisters op sommige Marstek firmware versies (met name V3 op firmware 149) sturen spurious bits die valse alarmen triggeren terwijl de batterij prima werkt. 'Automatisch' zet foutwaarschuwingen uit voor V3 apparaten en aan voor V1/V2 apparaten. Overrule als je weet dat jouw firmware correct fouten meldt."
+          },
+          "value": "auto",
+          "values": [
+            { "id": "auto", "label": { "en": "Automatic (V3 off, V1/V2 on)", "nl": "Automatisch (V3 uit, V1/V2 aan)" } },
+            { "id": "always", "label": { "en": "Always show", "nl": "Altijd tonen" } },
+            { "id": "never", "label": { "en": "Never show", "nl": "Nooit tonen" } }
+          ]
         }
       ]
     },

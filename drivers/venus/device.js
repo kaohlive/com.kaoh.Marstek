@@ -717,8 +717,13 @@ async writeDeviceName(name, config) {
       // Trigger operation mode change event
       const previousMode = this.getCapabilityValue('operation_mode');
       this.log('Previous mode: '+previousMode+' - New mode: '+modeStr);
-      // Only set capability if value changed to prevent unnecessary triggers
-      if (previousMode !== modeStr) {
+      // Guard: some firmware versions return inverter_state values outside
+      // our known map (e.g. transient values, undocumented states). Skip
+      // the capability write rather than crash with "Expected string, got
+      // undefined".
+      if (modeStr === undefined) {
+        this.log(`Unknown inverter state ${inverter_state} - not updating operation_mode`);
+      } else if (previousMode !== modeStr) {
         this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
 
         // Trigger operation mode change event only after value is set and if there was a previous value
@@ -744,7 +749,13 @@ async writeDeviceName(name, config) {
       if (currentForceMode === 'target_power' && (forceModeStr === 'force_charge' || forceModeStr === 'force_discharge')) {
         displayForceMode = 'target_power';
       }
-      if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
+      // Guard: skip write if force_mode is outside our known map (same
+      // firmware-return-out-of-range issue as operation_mode above).
+      // displayForceMode is kept in scope for downstream use (e.g.
+      // forceSocActive derivation).
+      if (forceModeStr === undefined) {
+        this.log(`Unknown force mode ${force_mode} - not updating force_charge_mode`);
+      } else if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
         // Don't overwrite - force_soc is active via SOC target register
       } else if (currentForceMode !== displayForceMode) {
         this.setCapabilityValue('force_charge_mode', displayForceMode).catch(this.error);
@@ -810,10 +821,15 @@ async writeDeviceName(name, config) {
         this._pendingWorkModeWrites = stillPending;
       }
 
-      // Only set capability if value changed to prevent unnecessary triggers
-      const currentWorkMode = this.getCapabilityValue('user_work_mode');
-      if (currentWorkMode !== workModeStr) {
-        this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+      // Only set capability if value changed to prevent unnecessary triggers.
+      // Guard against out-of-range work_mode values from firmware.
+      if (workModeStr === undefined) {
+        this.log(`Unknown work mode ${work_mode} - not updating user_work_mode`);
+      } else {
+        const currentWorkMode = this.getCapabilityValue('user_work_mode');
+        if (currentWorkMode !== workModeStr) {
+          this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+        }
       }
       //Process charging status from operation mode
       this.processChargingStatus(modeStr);
@@ -1025,19 +1041,37 @@ async writeDeviceName(name, config) {
 
       // Register 36104 not available on this device - skipping system fault detection
 
-      // Update alarm capability and set warning if needed
+      // Alarm reporting policy. Fault registers on some Marstek firmware
+      // versions (notably V3 on firmware 149) return spurious bits that
+      // our code interprets as real alarms, generating false warnings
+      // while the battery works fine. The show_alarms setting gates the
+      // user-visible behaviour: 'auto' turns alarms off for V3 devices
+      // and on for V1/V2 devices. Diagnostic logs always fire so we can
+      // still investigate on any device.
+      const alarmPolicy = this.getSetting('show_alarms') || 'auto';
+      const showAlarms = alarmPolicy === 'always'
+        || (alarmPolicy === 'auto' && this.deviceVersion !== 'v3');
+
+      // Update alarm capability - gated so V3 users on auto don't see a
+      // stuck "alarm active" indicator from spurious bits.
+      const effectiveAlarm = showAlarms && hasAlarm;
       const currentAlarm = this.getCapabilityValue('alarm_generic');
-      if (currentAlarm !== hasAlarm) {
-        this.setCapabilityValue('alarm_generic', hasAlarm).catch(this.error);
+      if (currentAlarm !== effectiveAlarm) {
+        this.setCapabilityValue('alarm_generic', effectiveAlarm).catch(this.error);
+      }
+
+      // Always log detected alarms for diagnostics
+      if (hasAlarm && alarms.length > 0) {
+        const diagMessage = `Device alarms detected: ${alarms.join(', ')}`;
+        this.log(`Alarms detected: ${diagMessage}${showAlarms ? '' : ' (suppressed by show_alarms=' + alarmPolicy + ')'}`);
       }
 
       // Set warning with specific alarm details and trigger workflow cards
-      if (hasAlarm && alarms.length > 0) {
+      if (showAlarms && hasAlarm && alarms.length > 0) {
         const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
         const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault},Hardware:${hardware_fault}`;
 
         this.setWarning(alarmMessage);
-        this.log(`Alarms detected: ${alarmMessage}`);
 
         // Trigger general battery fault detected event with tokens
         this.homey.flow.getDeviceTriggerCard('battery_fault_detected')
@@ -1079,7 +1113,7 @@ async writeDeviceName(name, config) {
             )
             .catch(this.error);
         }
-      } else if (!hasAlarm) {
+      } else if (showAlarms && !hasAlarm) {
         // Clear warning when no alarms
         this.unsetWarning();
       }
