@@ -5,22 +5,96 @@ const ModbusClient = require('../../api/ModbusClient');
 
 // Marstek Venus D driver (also marketed by some resellers as "Duravolt").
 //
-// Venus D is a PV-hybrid battery from a different Marstek product family
-// than the Venus E series; it has its own Modbus register map (30xxx/34xxx/
-// 37xxx ranges plus dedicated MPPT registers 30020-30040). The venus driver
-// reads from 32xxx registers which mostly do not exist on Venus D - we
-// keep these two drivers strictly separate to avoid the mis-detection
-// problem field-reported on the v1.4.0 release.
-//
-// Pair-time guard: this driver rejects any device whose name register
-// (31000) looks like a Venus E / V3 / V1-V2. The venus driver does the
-// inverse: it rejects VNSD* names and tells the user to pair with this
-// driver instead.
+// Venus D is a PV-hybrid battery. In v1.5.4 the driver was rewired to
+// poll the same 32xxx/33xxx/35xxx/4xxxx register range as the Venus E
+// driver: the community-extended Duravolt v1.1 datasheet confirms most
+// of these addresses are shared. See drivers/venusd/device.js for the
+// exclusion list (battery current/power, alarms, PV) and rationale.
 
 class VenusDDriver extends Homey.Driver {
 
+  // Same enums as Venus E - Duravolt v1.1 protocol shares these mappings.
+  INVERTER_MODES = {
+    0: 'sleep',
+    1: 'standby',
+    2: 'charge',
+    3: 'discharge',
+    4: 'backup',
+    5: 'update',
+    6: 'bypass',
+  };
+  FORCE_MODES = {
+    0: 'none',
+    1: 'force_charge',
+    2: 'force_discharge',
+  };
+  WORK_MODES = {
+    0: 'manual',
+    1: 'anti_feed',
+    2: 'trade_mode',
+    3: 'control_mode',
+  };
+
   async onInit() {
     this.log('VenusDDriver has been initialized');
+    this.registerFlowCardConditions();
+    this.registerFlowCardActions();
+  }
+
+  registerFlowCardConditions() {
+    this.homey.flow.getConditionCard('is_charging')
+      .registerRunListener(async (args) => args.device.conditionIsCharging());
+    this.homey.flow.getConditionCard('is_discharging')
+      .registerRunListener(async (args) => args.device.conditionIsDischarging());
+    this.homey.flow.getConditionCard('soc_above')
+      .registerRunListener(async (args) => args.device.conditionSOCAbove(args));
+    this.homey.flow.getConditionCard('soc_below')
+      .registerRunListener(async (args) => args.device.conditionSOCBelow(args));
+    this.homey.flow.getConditionCard('operation_mode_is')
+      .registerRunListener(async (args) => args.device.conditionOperationModeIs(args));
+    this.homey.flow.getConditionCard('temperature_above')
+      .registerRunListener(async (args) => args.device.conditionTemperatureAbove(args));
+    this.homey.flow.getConditionCard('backup_mode_is')
+      .registerRunListener(async (args) => args.device.conditionBackupModeIs(args));
+    this.homey.flow.getConditionCard('force_charge_mode_is')
+      .registerRunListener(async (args) => args.device.conditionForceChargeModeIs(args));
+    this.homey.flow.getConditionCard('user_work_mode_is')
+      .registerRunListener(async (args) => args.device.conditionUserWorkModeIs(args));
+    this.homey.flow.getConditionCard('force_charge_power_greater_than')
+      .registerRunListener(async (args) => args.device.conditionForceChargePowerGreaterThan(args));
+    this.homey.flow.getConditionCard('force_discharge_power_greater_than')
+      .registerRunListener(async (args) => args.device.conditionForceDischargePowerGreaterThan(args));
+    this.homey.flow.getConditionCard('force_charge_target_greater_than')
+      .registerRunListener(async (args) => args.device.conditionForceChargeTargetGreaterThan(args));
+    this.homey.flow.getConditionCard('max_charge_power_limit_below')
+      .registerRunListener(async (args) => args.device.conditionMaxChargePowerLimitBelow(args));
+    this.homey.flow.getConditionCard('max_discharge_power_limit_below')
+      .registerRunListener(async (args) => args.device.conditionMaxDischargePowerLimitBelow(args));
+    this.homey.flow.getConditionCard('charging_cutoff_soc_above')
+      .registerRunListener(async (args) => args.device.conditionChargingCutoffSocAbove(args));
+    this.homey.flow.getConditionCard('discharging_cutoff_soc_above')
+      .registerRunListener(async (args) => args.device.conditionDischargingCutoffSocAbove(args));
+  }
+
+  registerFlowCardActions() {
+    this.homey.flow.getActionCard('set_charge_mode')
+      .registerRunListener(async (args) => args.device.actionSetChargeMode(args));
+    this.homey.flow.getActionCard('set_backup_mode')
+      .registerRunListener(async (args) => args.device.actionSetBackupMode(args));
+    this.homey.flow.getActionCard('set_force_charge_mode')
+      .registerRunListener(async (args) => args.device.actionSetForceChargeMode(args));
+    this.homey.flow.getActionCard('set_user_work_mode')
+      .registerRunListener(async (args) => args.device.actionSetUserWorkMode(args));
+    this.homey.flow.getActionCard('set_force_charge_power')
+      .registerRunListener(async (args) => args.device.actionSetForceChargePower(args));
+    this.homey.flow.getActionCard('set_force_discharge_power')
+      .registerRunListener(async (args) => args.device.actionSetForceDischargePower(args));
+    this.homey.flow.getActionCard('set_force_charge_target')
+      .registerRunListener(async (args) => args.device.actionSetForceChargeTarget(args));
+    this.homey.flow.getActionCard('set_charging_cutoff_soc')
+      .registerRunListener(async (args) => args.device.actionSetChargingCutoffSoc(args));
+    this.homey.flow.getActionCard('set_discharging_cutoff_soc')
+      .registerRunListener(async (args) => args.device.actionSetDischargingCutoffSoc(args));
   }
 
   async onPair(session) {
@@ -34,9 +108,6 @@ class VenusDDriver extends Homey.Driver {
           return { success: false, message: 'Could not connect to device' };
         }
 
-        // Read device name (register 31000, 10 registers / 20 bytes) so we can
-        // verify this is actually a Venus D and not a Venus E that landed on
-        // the wrong driver. The Modbus error here gives us the early signal.
         const reg_name = await client.readHoldingRegisters(data.slave_id, 31000, 10);
         const deviceName = ModbusClient.bufferToString(reg_name).trim();
         const lower = deviceName.toLowerCase();
@@ -44,9 +115,8 @@ class VenusDDriver extends Homey.Driver {
         await client.disconnect();
 
         // Reject Venus E / V3 / V1-V2 hardware that should be on the venus
-        // driver. We err on the permissive side for everything else: if the
-        // user explicitly picked the Venus D driver, they probably know
-        // what they have.
+        // driver. Permissive for anything else: if the user explicitly picked
+        // Venus D, trust them.
         if (lower.startsWith('vnse') || lower.startsWith('ac') || lower.startsWith('limited') || lower.includes('bi_')) {
           return {
             success: false,

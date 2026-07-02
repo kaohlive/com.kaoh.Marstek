@@ -27,21 +27,31 @@
   ],
   "capabilities": [
     "onoff",
-    "measure_battery",
-    "meter_power.capacity",
+    "measure_voltage",
+    "measure_current",
     "measure_power",
-    "measure_power.battery",
+    "measure_voltage.battery",
+    "meter_power.capacity",
     "measure_power.imported",
     "measure_power.exported",
     "meter_power.imported",
     "meter_power.exported",
-    "measure_power.pv",
-    "measure_voltage.pv",
-    "measure_current.pv",
-    "meter_power.pv",
-    "measure_voltage",
-    "measure_current",
-    "measure_temperature"
+    "measure_temperature",
+    "measure_temperature.mos1",
+    "measure_temperature.mos2",
+    "battery_charging_state",
+    "force_charge_mode",
+    "operation_mode",
+    "user_work_mode",
+    "force_charge_target",
+    "measure_battery",
+    "force_discharge_power",
+    "force_charge_power",
+    "backup_mode",
+    "max_charge_power_limit",
+    "max_discharge_power_limit",
+    "target_power",
+    "target_power_mode"
   ],
   "capabilitiesOptions": {
     "onoff": {
@@ -58,28 +68,28 @@
         "nl": "Batterij idle (uit)"
       }
     },
-    "measure_battery": {
+    "measure_voltage": {
       "title": {
-        "en": "State of Charge",
-        "nl": "Laadtoestand"
+        "en": "Grid output Voltage",
+        "nl": "Netuitvoer voltage"
       }
     },
-    "meter_power.capacity": {
+    "measure_voltage.battery": {
       "title": {
-        "en": "Stored energy available",
-        "nl": "Opgeslagen energie beschikbaar"
+        "en": "Battery Voltage",
+        "nl": "Batterij voltage"
+      }
+    },
+    "measure_current": {
+      "title": {
+        "en": "Grid output Current",
+        "nl": "Netuitvoer stroom"
       }
     },
     "measure_power": {
       "title": {
         "en": "Grid output Power",
         "nl": "Netuitvoer vermogen"
-      }
-    },
-    "measure_power.battery": {
-      "title": {
-        "en": "Battery Power",
-        "nl": "Batterij vermogen"
       }
     },
     "measure_power.imported": {
@@ -106,40 +116,10 @@
         "nl": "Ontladen energie"
       }
     },
-    "measure_power.pv": {
+    "meter_power.capacity": {
       "title": {
-        "en": "Solar Power",
-        "nl": "PV vermogen"
-      }
-    },
-    "measure_voltage.pv": {
-      "title": {
-        "en": "Solar Voltage",
-        "nl": "PV voltage"
-      }
-    },
-    "measure_current.pv": {
-      "title": {
-        "en": "Solar Current",
-        "nl": "PV stroom"
-      }
-    },
-    "meter_power.pv": {
-      "title": {
-        "en": "Solar Energy Generated",
-        "nl": "PV opgewekt"
-      }
-    },
-    "measure_voltage": {
-      "title": {
-        "en": "Grid output Voltage",
-        "nl": "Netuitvoer voltage"
-      }
-    },
-    "measure_current": {
-      "title": {
-        "en": "Grid output Current",
-        "nl": "Netuitvoer stroom"
+        "en": "Stored energy available",
+        "nl": "Opgeslagen energie beschikbaar"
       }
     },
     "measure_temperature": {
@@ -147,6 +127,64 @@
         "en": "Internal temperature",
         "nl": "Interne temperatuur"
       }
+    },
+    "measure_temperature.mos1": {
+      "title": {
+        "en": "MOSFET 1 temperature",
+        "nl": "MOSFET 1 temperatuur"
+      }
+    },
+    "measure_temperature.mos2": {
+      "title": {
+        "en": "MOSFET 2 temperature",
+        "nl": "MOSFET 2 temperatuur"
+      }
+    },
+    "target_power": {
+      "min": -2500,
+      "max": 2500,
+      "step": 5
+    },
+    "force_charge_power": {
+      "uiComponent": null
+    },
+    "force_discharge_power": {
+      "uiComponent": null
+    },
+    "user_work_mode": {
+      "uiComponent": null
+    },
+    "target_power_mode": {
+      "values": [
+        {
+          "id": "homey",
+          "title": {
+            "en": "Homey (force control)",
+            "nl": "Homey (geforceerd)"
+          }
+        },
+        {
+          "id": "anti_feed",
+          "title": {
+            "en": "Self consumption",
+            "nl": "Zelfconsumptie"
+          }
+        },
+        {
+          "id": "trade_mode",
+          "title": {
+            "en": "AI Optimization",
+            "nl": "AI Optimalisatie"
+          }
+        },
+        {
+          "id": "manual",
+          "title": {
+            "en": "Manual",
+            "nl": "Handmatig"
+          }
+        }
+      ]
     }
   },
   "settings": [
@@ -196,6 +234,21 @@
           "value": 5000,
           "min": 2000,
           "max": 60000
+        },
+        {
+          "id": "force_mode_delay",
+          "type": "number",
+          "label": {
+            "en": "Force Mode Delay (ms)",
+            "nl": "Gedwongen Modus Vertraging (ms)"
+          },
+          "hint": {
+            "en": "Delay before confirming force mode change to allow battery to accept new state",
+            "nl": "Vertraging voordat gedwongen modus wijziging wordt bevestigd, zodat batterij nieuwe status kan accepteren"
+          },
+          "value": 1000,
+          "min": 0,
+          "max": 10000
         },
         {
           "id": "connection_timeout",
@@ -256,6 +309,47 @@
           "type": "label",
           "label": { "en": "Firmware" },
           "value": "xxx"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "label": {
+        "en": "Battery Protection Settings",
+        "nl": "Batterij Bescherming Instellingen"
+      },
+      "children": [
+        {
+          "id": "charging_cutoff_soc",
+          "type": "number",
+          "label": {
+            "en": "Charging Cutoff SOC (%)",
+            "nl": "Laad Afkap SOC (%)"
+          },
+          "hint": {
+            "en": "SOC level at which charging stops. Recommended range: 40-100%",
+            "nl": "SOC niveau waarbij laden stopt. Aanbevolen bereik: 40-100%"
+          },
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "units": "%"
+        },
+        {
+          "id": "discharging_cutoff_soc",
+          "type": "number",
+          "label": {
+            "en": "Discharging Cutoff SOC (%)",
+            "nl": "Ontlaad Afkap SOC (%)"
+          },
+          "hint": {
+            "en": "SOC reserve level below which discharging stops. Recommended range: 12-30%. WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+            "nl": "SOC reserve niveau waaronder ontladen stopt. Aanbevolen bereik: 12-30%. WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+          },
+          "value": 15,
+          "min": 0,
+          "max": 100,
+          "units": "%"
         }
       ]
     }
