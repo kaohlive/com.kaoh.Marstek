@@ -1,0 +1,23 @@
+{
+  "id": "soc_below_threshold",
+  "title": {
+    "en": "Battery level dropped below threshold",
+    "nl": "Batterijniveau onder drempel"
+  },
+  "titleFormatted": {
+    "en": "Battery level dropped below threshold",
+    "nl": "Batterijniveau onder threshold"
+  },
+  "args": [],
+  "tokens": [
+    {
+      "name": "threshold",
+      "type": "number",
+      "title": {
+        "en": "Threshold (%)",
+        "nl": "Drempel (%)"
+      }
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

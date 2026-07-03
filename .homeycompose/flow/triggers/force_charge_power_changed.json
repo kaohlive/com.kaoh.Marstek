@@ -1,0 +1,39 @@
+{
+  "id": "force_charge_power_changed",
+  "title": {
+    "en": "Force charge power changed",
+    "nl": "Gedwongen laad vermogen is veranderd"
+  },
+  "titleFormatted": {
+    "en": "Force charge power changed to [[power]] W",
+    "nl": "Gedwongen laad vermogen is veranderd naar [[power]] W"
+  },
+  "hint": {
+    "en": "Triggered when force charge power setting changes",
+    "nl": "Geactiveerd wanneer gedwongen laad vermogen instelling verandert"
+  },
+  "tokens": [
+    {
+      "name": "power",
+      "type": "number",
+      "title": {
+        "en": "Power",
+        "nl": "Vermogen"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "power",
+      "type": "range",
+      "title": {
+        "en": "Power (W)",
+        "nl": "Vermogen (W)"
+      },
+      "min": 0,
+      "max": 2500,
+      "step": 5
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

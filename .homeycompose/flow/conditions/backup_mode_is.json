@@ -1,0 +1,42 @@
+{
+  "id": "backup_mode_is",
+  "title": {
+    "en": "Battery backup mode is",
+    "nl": "Batterij backup modus is"
+  },
+  "titleFormatted": {
+    "en": "Battery backup mode !{{is|is not}} [[mode]]",
+    "nl": "Batterij backup modus !{{is|is niet}} [[mode]]"
+  },
+  "hint": {
+    "en": "Check if battery backup mode is enabled or disabled",
+    "nl": "Controleer of batterij backup modus is ingeschakeld of uitgeschakeld"
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "dropdown",
+      "title": {
+        "en": "Mode",
+        "nl": "Modus"
+      },
+      "values": [
+        {
+          "id": "true",
+          "label": {
+            "en": "Backup Active",
+            "nl": "Backup Actief"
+          }
+        },
+        {
+          "id": "false",
+          "label": {
+            "en": "Normal Mode",
+            "nl": "Normale Modus"
+          }
+        }
+      ]
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

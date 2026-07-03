@@ -1,0 +1,25 @@
+{
+  "id": "soc_below",
+  "title": {
+    "en": "Battery level is below",
+    "nl": "Batterijniveau is onder"
+  },
+  "titleFormatted": {
+    "en": "Battery level !{{is below|is not below}} [[percentage]]%",
+    "nl": "Batterijniveau !{{is onder|is niet onder}} [[percentage]]%"
+  },
+  "args": [
+    {
+      "name": "percentage",
+      "type": "number",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "title": {
+        "en": "Percentage (%)",
+        "nl": "Percentage (%)"
+      }
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

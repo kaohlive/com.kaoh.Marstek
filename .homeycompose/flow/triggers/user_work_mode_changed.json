@@ -1,0 +1,67 @@
+{
+  "id": "user_work_mode_changed",
+  "deprecated": true,
+  "title": {
+    "en": "Work mode changed",
+    "nl": "Optimalizatie modus is veranderd"
+  },
+  "titleFormatted": {
+    "en": "Work mode changed to [[mode]]",
+    "nl": "Optimalizatie modus is veranderd naar [[mode]]"
+  },
+  "hint": {
+    "en": "Triggered when work mode changes",
+    "nl": "Geactiveerd wanneer optimalizatie modus verandert"
+  },
+  "tokens": [
+    {
+      "name": "mode",
+      "type": "string",
+      "title": {
+        "en": "Work Mode",
+        "nl": "Optimalizatie Modus"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "mode",
+      "type": "dropdown",
+      "title": {
+        "en": "Mode",
+        "nl": "Modus"
+      },
+      "values": [
+        {
+          "id": "manual",
+          "label": {
+            "en": "Manual",
+            "nl": "Handmatig"
+          }
+        },
+        {
+          "id": "anti_feed",
+          "label": {
+            "en": "Grid zero mode",
+            "nl": "0 op de meter"
+          }
+        },
+        {
+          "id": "trade_mode",
+          "label": {
+            "en": "Trade on energy tarifs",
+            "nl": "Handelen op energie tarieven"
+          }
+        },
+        {
+          "id": "control_mode",
+          "label": {
+            "en": "Use force controls",
+            "nl": "Gebruik forceer laadmodus"
+          }
+        }
+      ]
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

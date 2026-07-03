@@ -1,0 +1,13 @@
+{
+  "id": "is_discharging",
+  "title": {
+    "en": "Battery is discharging",
+    "nl": "Batterij is aan het ontladen"
+  },
+  "titleFormatted": {
+    "en": "Battery !{{is|is not}} discharging",
+    "nl": "Batterij !{{is|is niet}} aan het ontladen"
+  },
+  "args": [],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

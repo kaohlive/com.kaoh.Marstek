@@ -1,0 +1,13 @@
+{
+  "id": "battery_started_discharging",
+  "title": {
+    "en": "Battery started discharging",
+    "nl": "Batterij is gaan ontladen"
+  },
+  "titleFormatted": {
+    "en": "Battery started discharging",
+    "nl": "Batterij is gaan ontladen"
+  },
+  "args": [],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

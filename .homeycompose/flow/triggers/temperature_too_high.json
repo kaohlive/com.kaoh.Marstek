@@ -1,0 +1,23 @@
+{
+  "id": "temperature_too_high",
+  "title": {
+    "en": "Battery temperature too high",
+    "nl": "Batterijtemperatuur te hoog"
+  },
+  "titleFormatted": {
+    "en": "Battery temperature too high",
+    "nl": "Batterijtemperatuur te hoog"
+  },
+  "args": [],
+  "tokens": [
+    {
+      "name": "temperature",
+      "type": "number",
+      "title": {
+        "en": "Temperature (°C)",
+        "nl": "Temperatuur (°C)"
+      }
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

@@ -1,0 +1,88 @@
+{
+  "id": "operation_mode_changed",
+  "title": {
+    "en": "Operation mode changed",
+    "nl": "Bedrijfsmodus is veranderd"
+  },
+  "titleFormatted": {
+    "en": "Operation mode changed to [[mode]]",
+    "nl": "Bedrijfsmodus is veranderd naar [[mode]]"
+  },
+  "hint": {
+    "en": "Triggered when battery operation mode changes",
+    "nl": "Geactiveerd wanneer batterij bedrijfsmodus verandert"
+  },
+  "tokens": [
+    {
+      "name": "mode",
+      "type": "string",
+      "title": {
+        "en": "Operation Mode",
+        "nl": "Bedrijfsmodus"
+      }
+    },
+    {
+      "name": "prevMode",
+      "type": "string",
+      "title": {
+        "en": "Previous Operation Mode",
+        "nl": "Vorige bedrijfsmodus"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "mode",
+      "type": "dropdown",
+      "title": {
+        "en": "Mode",
+        "nl": "Modus"
+      },
+      "values": [
+        {
+          "id": "sleep",
+          "label": {
+            "en": "Sleep",
+            "nl": "slaapstand"
+          }
+        },
+        {
+          "id": "standby",
+          "label": {
+            "en": "Standby",
+            "nl": "Stand-by"
+          }
+        },
+        {
+          "id": "charge",
+          "label": {
+            "en": "Charging",
+            "nl": "Laden"
+          }
+        },
+        {
+          "id": "discharge",
+          "label": {
+            "en": "Discharging",
+            "nl": "Ontladen"
+          }
+        },
+        {
+          "id": "backup",
+          "label": {
+            "en": "Backup mode",
+            "nl": "Backup"
+          }
+        },
+        {
+          "id": "update",
+          "label": {
+            "en": "OTA upgrade",
+            "nl": "software upgrade"
+          }
+        }
+      ]
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

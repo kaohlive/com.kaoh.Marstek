@@ -1,0 +1,29 @@
+{
+  "id": "set_discharging_cutoff_soc",
+  "title": {
+    "en": "Set discharging cutoff SOC (reserve)",
+    "nl": "Ontlaad afkap SOC (reserve) instellen"
+  },
+  "titleFormatted": {
+    "en": "Set discharging cutoff SOC to [[percentage]]%",
+    "nl": "Ontlaad afkap SOC instellen op [[percentage]]%"
+  },
+  "hint": {
+    "en": "Set the SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+    "nl": "Stel het SOC reserve niveau in waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+  },
+  "args": [
+    {
+      "name": "percentage",
+      "type": "range",
+      "title": {
+        "en": "Percentage (%)",
+        "nl": "Percentage (%)"
+      },
+      "min": 12,
+      "max": 30,
+      "step": 1
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

@@ -1,0 +1,63 @@
+{
+  "id": "force_charge_mode_is",
+  "title": {
+    "en": "Force charge mode is",
+    "nl": "Gedwongen laadmodus is"
+  },
+  "titleFormatted": {
+    "en": "Force charge mode !{{is|is not}} [[mode]]",
+    "nl": "Gedwongen laadmodus !{{is|is niet}} [[mode]]"
+  },
+  "hint": {
+    "en": "Check current force charge mode",
+    "nl": "Controleer huidige gedwongen laadmodus"
+  },
+  "args": [
+    {
+      "name": "mode",
+      "type": "dropdown",
+      "title": {
+        "en": "Mode",
+        "nl": "Modus"
+      },
+      "values": [
+        {
+          "id": "none",
+          "label": {
+            "en": "Force mode Off",
+            "nl": "Gedwongen mode uit"
+          }
+        },
+        {
+          "id": "force_charge",
+          "label": {
+            "en": "Force Charge",
+            "nl": "Forceer Laden"
+          }
+        },
+        {
+          "id": "force_discharge",
+          "label": {
+            "en": "Force Discharge",
+            "nl": "Forceer Ontladen"
+          }
+        },
+        {
+          "id": "force_soc",
+          "label": {
+            "en": "Force to SOC target",
+            "nl": "Forceer tot SOC doel"
+          }
+        },
+        {
+          "id": "target_power",
+          "label": {
+            "en": "Homey target power",
+            "nl": "Homey doelvermogen"
+          }
+        }
+      ]
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

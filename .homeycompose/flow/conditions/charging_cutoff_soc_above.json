@@ -1,0 +1,29 @@
+{
+  "id": "charging_cutoff_soc_above",
+  "title": {
+    "en": "Charging cutoff SOC is above",
+    "nl": "Laad afkap SOC is boven"
+  },
+  "titleFormatted": {
+    "en": "Charging cutoff SOC !{{is above|is not above}} [[percentage]]%",
+    "nl": "Laad afkap SOC !{{is boven|is niet boven}} [[percentage]]%"
+  },
+  "hint": {
+    "en": "Check if the charging cutoff SOC setting is above a threshold",
+    "nl": "Controleer of de laad afkap SOC instelling boven een drempel is"
+  },
+  "args": [
+    {
+      "name": "percentage",
+      "type": "range",
+      "title": {
+        "en": "Percentage (%)",
+        "nl": "Percentage (%)"
+      },
+      "min": 40,
+      "max": 100,
+      "step": 1
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

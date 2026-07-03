@@ -1,0 +1,23 @@
+{
+  "id": "charging_status_changed",
+  "title": {
+    "en": "Charging status changed",
+    "nl": "Laadstatus gewijzigd"
+  },
+  "titleFormatted": {
+    "en": "Charging status changed",
+    "nl": "Laadstatus gewijzigd"
+  },
+  "args": [],
+  "tokens": [
+    {
+      "name": "status",
+      "type": "string",
+      "title": {
+        "en": "Status",
+        "nl": "Status"
+      }
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

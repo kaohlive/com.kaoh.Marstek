@@ -1,0 +1,39 @@
+{
+  "id": "force_charge_target_changed",
+  "title": {
+    "en": "Force SOC target changed",
+    "nl": "Gedwongen SOC doel is veranderd"
+  },
+  "titleFormatted": {
+    "en": "Force SOC target changed to [[target]]%",
+    "nl": "Gedwongen SOC doel is veranderd naar [[target]]%"
+  },
+  "hint": {
+    "en": "Triggered when force SOC target setting changes",
+    "nl": "Geactiveerd wanneer gedwongen SOC doel instelling verandert"
+  },
+  "tokens": [
+    {
+      "name": "target",
+      "type": "number",
+      "title": {
+        "en": "SOC Target",
+        "nl": "SOC Doel"
+      }
+    }
+  ],
+  "args": [
+    {
+      "name": "target",
+      "type": "range",
+      "title": {
+        "en": "SOC Target (%)",
+        "nl": "SOC Doel (%)"
+      },
+      "min": 11,
+      "max": 100,
+      "step": 1
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

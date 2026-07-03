@@ -1,0 +1,25 @@
+{
+  "id": "temperature_above",
+  "title": {
+    "en": "Temperature is above",
+    "nl": "Temperatuur is boven"
+  },
+  "titleFormatted": {
+    "en": "Temperature !{{is above|is not above}} [[temperature]]°C",
+    "nl": "Temperatuur !{{is boven|is niet boven}} [[temperature]]°C"
+  },
+  "args": [
+    {
+      "name": "temperature",
+      "type": "number",
+      "min": -50,
+      "max": 100,
+      "step": 1,
+      "title": {
+        "en": "Temperature (°C)",
+        "nl": "Temperatuur (°C)"
+      }
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}

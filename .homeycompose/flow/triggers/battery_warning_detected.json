@@ -1,0 +1,35 @@
+{
+  "id": "battery_warning_detected",
+  "title": {
+    "en": "Battery warning detected",
+    "nl": "Batterijwaarschuwing gedetecteerd"
+  },
+  "titleFormatted": {
+    "en": "Battery warning detected",
+    "nl": "Batterijwaarschuwing gedetecteerd"
+  },
+  "hint": {
+    "en": "Triggered when any battery warning is detected",
+    "nl": "Geactiveerd wanneer een batterijwaarschuwing wordt gedetecteerd"
+  },
+  "tokens": [
+    {
+      "name": "message",
+      "type": "string",
+      "title": {
+        "en": "Warning Message",
+        "nl": "Waarschuwingsbericht"
+      }
+    },
+    {
+      "name": "alarm_codes",
+      "type": "string",
+      "title": {
+        "en": "Alarm Codes",
+        "nl": "Alarm Codes"
+      }
+    }
+  ],
+  "args": [],
+  "filter": "driver_id=venus"
+}

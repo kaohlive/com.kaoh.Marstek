@@ -1,0 +1,29 @@
+{
+  "id": "force_charge_target_greater_than",
+  "title": {
+    "en": "Force SOC target is greater than",
+    "nl": "Gedwongen SOC doel is groter dan"
+  },
+  "titleFormatted": {
+    "en": "Force SOC target !{{is greater than|is not greater than}} [[target]]%",
+    "nl": "Gedwongen SOC doel !{{is groter dan|is niet groter dan}} [[target]]%"
+  },
+  "hint": {
+    "en": "Check if force SOC target is above a threshold",
+    "nl": "Controleer of gedwongen SOC doel boven een drempel is"
+  },
+  "args": [
+    {
+      "name": "target",
+      "type": "range",
+      "title": {
+        "en": "SOC Target (%)",
+        "nl": "SOC Doel (%)"
+      },
+      "min": 11,
+      "max": 100,
+      "step": 1
+    }
+  ],
+  "filter": "driver_id=venus|driver_id=venusd"
+}
