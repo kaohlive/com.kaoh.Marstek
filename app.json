@@ -1,7 +1,7 @@
 {
   "_comment": "This file is generated. Please edit .homeycompose/app.json instead.",
   "id": "com.kaoh.marstek",
-  "version": "1.5.5",
+  "version": "1.5.6",
   "brandColor": "#1d8296",
   "compatibility": ">=12.13.0",
   "sdk": 3,
@@ -1460,6 +1460,150 @@
             "step": 1
           }
         ]
+      },
+      {
+        "id": "venusd_battery_fault_detected",
+        "title": {
+          "en": "Battery fault detected",
+          "nl": "Batterijfout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Battery fault detected",
+          "nl": "Batterijfout gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when any battery fault is detected",
+          "nl": "Geactiveerd wanneer een batterijfout wordt gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Fault Message",
+              "nl": "Foutmelding"
+            }
+          },
+          {
+            "name": "alarm_codes",
+            "type": "string",
+            "title": {
+              "en": "Alarm Codes",
+              "nl": "Alarm Codes"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venusd"
+          }
+        ]
+      },
+      {
+        "id": "venusd_battery_warning_detected",
+        "title": {
+          "en": "Battery warning detected",
+          "nl": "Batterijwaarschuwing gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Battery warning detected",
+          "nl": "Batterijwaarschuwing gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when any battery warning is detected",
+          "nl": "Geactiveerd wanneer een batterijwaarschuwing wordt gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Warning Message",
+              "nl": "Waarschuwingsbericht"
+            }
+          },
+          {
+            "name": "alarm_codes",
+            "type": "string",
+            "title": {
+              "en": "Alarm Codes",
+              "nl": "Alarm Codes"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venusd"
+          }
+        ]
+      },
+      {
+        "id": "venusd_grid_fault_detected",
+        "title": {
+          "en": "Grid fault detected",
+          "nl": "Netwerkfout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Grid fault detected",
+          "nl": "Netwerkfout gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when grid-related faults are detected",
+          "nl": "Geactiveerd wanneer netwerkgerelateerde fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Grid Fault Details",
+              "nl": "Netwerkfout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venusd"
+          }
+        ]
+      },
+      {
+        "id": "venusd_battery_system_fault_detected",
+        "title": {
+          "en": "Battery system fault detected",
+          "nl": "Batterijsysteem fout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Battery system fault detected",
+          "nl": "Batterijsysteem fout gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when battery system faults are detected",
+          "nl": "Geactiveerd wanneer batterijsysteem fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Battery System Fault Details",
+              "nl": "Batterijsysteem Fout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venusd"
+          }
+        ]
       }
     ],
     "conditions": [
@@ -2684,6 +2828,24 @@
             "step": 1
           }
         ]
+      },
+      {
+        "id": "venusd_has_fault",
+        "title": {
+          "en": "Battery has fault",
+          "nl": "Batterij heeft storing"
+        },
+        "titleFormatted": {
+          "en": "Battery !{{has|does not have}} a fault",
+          "nl": "Batterij !{{heeft|heeft geen}} storing"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venusd"
+          }
+        ]
       }
     ],
     "actions": [
@@ -3775,16 +3937,16 @@
                 "nl": "Toon fouten"
               },
               "hint": {
-                "en": "Fault registers on some Marstek firmware versions (notably V3 on firmware 149) return spurious bits that trigger false alarms while the battery works fine. 'Automatic' turns fault warnings off for V3 devices and on for V1/V2 devices. Override if you know your firmware reports alarms correctly.",
-                "nl": "Foutregisters op sommige Marstek firmware versies (met name V3 op firmware 149) sturen spurious bits die valse alarmen triggeren terwijl de batterij prima werkt. 'Automatisch' zet foutwaarschuwingen uit voor V3 apparaten en aan voor V1/V2 apparaten. Overrule als je weet dat jouw firmware correct fouten meldt."
+                "en": "Controls whether fault registers 36000/36100/36101 trigger user-visible warnings and flow cards. Register 36103 was removed in v1.5.6 because it produced constant false positives on firmware v149. If a future firmware causes spurious bits on the remaining registers, set to 'Never show' as an escape hatch.",
+                "nl": "Bepaalt of foutregisters 36000/36100/36101 zichtbare waarschuwingen en flow cards triggeren. Register 36103 is verwijderd in v1.5.6 omdat het valse alarmen produceerde op firmware v149. Als een toekomstige firmware valse bits op de overige registers zet, kies dan 'Nooit tonen' als tijdelijke oplossing."
               },
               "value": "auto",
               "values": [
                 {
                   "id": "auto",
                   "label": {
-                    "en": "Automatic (V3 off, V1/V2 on)",
-                    "nl": "Automatisch (V3 uit, V1/V2 aan)"
+                    "en": "Automatic (show real faults)",
+                    "nl": "Automatisch (toon echte fouten)"
                   }
                 },
                 {
@@ -3936,6 +4098,7 @@
         "measure_temperature.mos1",
         "measure_temperature.mos2",
         "battery_charging_state",
+        "alarm_generic",
         "force_charge_mode",
         "operation_mode",
         "user_work_mode",
@@ -4175,6 +4338,42 @@
               "value": 3,
               "min": 1,
               "max": 10
+            },
+            {
+              "id": "show_alarms",
+              "type": "dropdown",
+              "label": {
+                "en": "Show fault alarms",
+                "nl": "Toon fouten"
+              },
+              "hint": {
+                "en": "Controls whether fault registers 36000/36100/36101 trigger user-visible warnings and flow cards on this Venus D. Set to 'Never show' as an escape hatch if a firmware update starts producing spurious bits on those registers.",
+                "nl": "Bepaalt of foutregisters 36000/36100/36101 zichtbare waarschuwingen en flow cards triggeren op deze Venus D. Kies 'Nooit tonen' als noodgreep als een firmware update valse bits op deze registers gaat zetten."
+              },
+              "value": "auto",
+              "values": [
+                {
+                  "id": "auto",
+                  "label": {
+                    "en": "Automatic (show real faults)",
+                    "nl": "Automatisch (toon echte fouten)"
+                  }
+                },
+                {
+                  "id": "always",
+                  "label": {
+                    "en": "Always show",
+                    "nl": "Altijd tonen"
+                  }
+                },
+                {
+                  "id": "never",
+                  "label": {
+                    "en": "Never show",
+                    "nl": "Nooit tonen"
+                  }
+                }
+              ]
             }
           ]
         },

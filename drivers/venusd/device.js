@@ -14,10 +14,18 @@ const ModbusClient = require('../../api/ModbusClient');
 // were working when the tester was mistakenly paired on the Venus
 // driver.
 //
+// FAULT REGISTERS (36xxx):
+// - 36000 (system alarms), 36100 (grid faults), 36101 (battery faults)
+//   ARE read and fed into the alarm_generic capability + the venusd_*_
+//   fault flow triggers. Tester dumps across v158.1 and v149 showed these
+//   at 0x0000; that means "no fault right now", not "always empty".
+// - 36103 is deliberately NOT read. On v149 it holds a stable constant
+//   (0x0940) that our PDF-based bit interpretation reads as three
+//   simultaneous hardware faults on a battery that is working fine.
+//   Marstek shifted the semantics of 36103 in newer firmware.
+// - 36104 is absent on every firmware tested.
+//
 // DELIBERATELY OMITTED:
-// - Alarm/fault registers (36xxx) - Venus D specific alarm bit
-//   meanings are unclear and we already gate false-positives on the
-//   Venus E driver. No alarm processing here at all.
 // - Battery current (32101) and battery power (32102) - the tester
 //   confirmed these return garbage on Venus D (32101 always 0.02A,
 //   32102 always 0W) even on the working v147 firmware. Skipping
@@ -84,7 +92,7 @@ class VenusDDevice extends Homey.Device {
       'measure_voltage', 'measure_current', 'measure_temperature',
       'measure_voltage.battery',
       'measure_temperature.mos1', 'measure_temperature.mos2',
-      'operation_mode', 'battery_charging_state',
+      'operation_mode', 'battery_charging_state', 'alarm_generic',
       'force_charge_mode', 'force_charge_target', 'backup_mode',
       'user_work_mode', 'target_power', 'target_power_mode',
       'force_charge_power', 'force_discharge_power',
@@ -491,9 +499,125 @@ class VenusDDevice extends Homey.Device {
       const temp_mos2 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos2)) * 0.1;
       this.setCapabilityValue('measure_temperature.mos2', temp_mos2).catch(this.error);
 
-      // Alarm processing deliberately omitted - see top-of-file comment.
+      await this.processAlarmCodes(slaveId);
     } catch (error) {
       this.log('Error processing battery health:', error);
+    }
+  }
+
+  async processAlarmCodes(slaveId) {
+    // Reads Marstek fault registers 36000/36100/36101 and drives the
+    // alarm_generic capability plus the venusd_* fault flow triggers.
+    //
+    // 36103 is deliberately NOT read here - see the top-of-file comment
+    // for the tester-dump findings that led to that decision. Adding it
+    // would reintroduce the constant false hardware-alarm flood on
+    // firmware v149.
+    try {
+      const alarms = [];
+      const systemAlarms = [];
+      const gridAlarms = [];
+      const batteryAlarms = [];
+      let hasAlarm = false;
+
+      let alarm_code = 0;
+      let grid_fault = 0;
+      let battery_fault = 0;
+
+      try {
+        const reg_alarm_code = await this.modbus.readHoldingRegisters(slaveId, 36000, 1);
+        alarm_code = ModbusClient.bufferToUint16(Buffer.concat(reg_alarm_code));
+        if (alarm_code > 0) {
+          hasAlarm = true;
+          if (alarm_code & 0x01) { alarms.push('PLL Abnormal Restart'); systemAlarms.push('PLL Abnormal Restart'); }
+          if (alarm_code & 0x02) { alarms.push('Over Temperature Limit'); systemAlarms.push('Over Temperature Limit'); }
+          if (alarm_code & 0x04) { alarms.push('Low Temperature Limit'); systemAlarms.push('Low Temperature Limit'); }
+          if (alarm_code & 0x08) { alarms.push('Fan Abnormal Warning'); systemAlarms.push('Fan Abnormal Warning'); }
+          if (alarm_code & 0x10) { alarms.push('Low Battery SOC Warning'); systemAlarms.push('Low Battery SOC Warning'); }
+          if (alarm_code & 0x20) { alarms.push('Output Overcurrent Warning'); systemAlarms.push('Output Overcurrent Warning'); }
+          if (alarm_code & 0x40) { alarms.push('Abnormal Line Sequence Detection'); systemAlarms.push('Abnormal Line Sequence Detection'); }
+        }
+      } catch (e) {
+        this.log(`Alarm register 36000 not available: ${e.message}`);
+      }
+
+      try {
+        const reg_grid_fault = await this.modbus.readHoldingRegisters(slaveId, 36100, 1);
+        grid_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_grid_fault));
+        if (grid_fault > 0) {
+          hasAlarm = true;
+          if (grid_fault & 0x01) { alarms.push('Grid Overvoltage'); gridAlarms.push('Grid Overvoltage'); }
+          if (grid_fault & 0x02) { alarms.push('Grid Undervoltage'); gridAlarms.push('Grid Undervoltage'); }
+          if (grid_fault & 0x04) { alarms.push('Grid Overfrequency'); gridAlarms.push('Grid Overfrequency'); }
+          if (grid_fault & 0x08) { alarms.push('Grid Underfrequency'); gridAlarms.push('Grid Underfrequency'); }
+          if (grid_fault & 0x10) { alarms.push('Grid Peak Voltage Abnormal'); gridAlarms.push('Grid Peak Voltage Abnormal'); }
+          if (grid_fault & 0x20) { alarms.push('Current Dcover'); gridAlarms.push('Current Dcover'); }
+          if (grid_fault & 0x40) { alarms.push('Voltage Dcover'); gridAlarms.push('Voltage Dcover'); }
+        }
+      } catch (e) {
+        this.log(`Grid fault register 36100 not available: ${e.message}`);
+      }
+
+      try {
+        const reg_battery_fault = await this.modbus.readHoldingRegisters(slaveId, 36101, 1);
+        battery_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_battery_fault));
+        if (battery_fault > 0) {
+          hasAlarm = true;
+          if (battery_fault & 0x01) { alarms.push('Battery Overvoltage'); batteryAlarms.push('Battery Overvoltage'); }
+          if (battery_fault & 0x02) { alarms.push('Battery Undervoltage'); batteryAlarms.push('Battery Undervoltage'); }
+          if (battery_fault & 0x04) { alarms.push('Battery Overcurrent'); batteryAlarms.push('Battery Overcurrent'); }
+          if (battery_fault & 0x08) { alarms.push('Battery Low SOC'); batteryAlarms.push('Battery Low SOC'); }
+          if (battery_fault & 0x10) { alarms.push('Battery Communication Failure'); batteryAlarms.push('Battery Communication Failure'); }
+          if (battery_fault & 0x20) { alarms.push('BMS Protect'); batteryAlarms.push('BMS Protect'); }
+        }
+      } catch (e) {
+        this.log(`Battery fault register 36101 not available: ${e.message}`);
+      }
+
+      const alarmPolicy = this.getSetting('show_alarms') || 'auto';
+      const showAlarms = alarmPolicy !== 'never';
+
+      const effectiveAlarm = showAlarms && hasAlarm;
+      const currentAlarm = this.getCapabilityValue('alarm_generic');
+      if (currentAlarm !== effectiveAlarm) {
+        this.setCapabilityValue('alarm_generic', effectiveAlarm).catch(this.error);
+      }
+
+      if (hasAlarm && alarms.length > 0) {
+        const diagMessage = `Device alarms detected: ${alarms.join(', ')}`;
+        this.log(`Alarms detected: ${diagMessage}${showAlarms ? '' : ' (suppressed by show_alarms=never)'}`);
+      }
+
+      if (showAlarms && hasAlarm && alarms.length > 0) {
+        const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
+        const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault}`;
+
+        this.setWarning(alarmMessage);
+
+        this.homey.flow.getDeviceTriggerCard('venusd_battery_fault_detected')
+          .trigger(this, { message: alarmMessage, alarm_codes: alarmCodes }, {})
+          .catch(this.error);
+
+        if (gridAlarms.length > 0) {
+          this.homey.flow.getDeviceTriggerCard('venusd_grid_fault_detected')
+            .trigger(this, { message: gridAlarms.join(', ') }, {})
+            .catch(this.error);
+        }
+        if (batteryAlarms.length > 0) {
+          this.homey.flow.getDeviceTriggerCard('venusd_battery_system_fault_detected')
+            .trigger(this, { message: batteryAlarms.join(', ') }, {})
+            .catch(this.error);
+        }
+        if (systemAlarms.length > 0) {
+          this.homey.flow.getDeviceTriggerCard('venusd_battery_warning_detected')
+            .trigger(this, { message: systemAlarms.join(', '), alarm_codes: alarmCodes }, {})
+            .catch(this.error);
+        }
+      } else {
+        this.unsetWarning();
+      }
+    } catch (error) {
+      this.log('Error processing alarm codes:', error);
     }
   }
 
@@ -1085,6 +1209,9 @@ class VenusDDevice extends Homey.Device {
   }
   async conditionOperationModeIs(args) {
     return this.getCapabilityValue('operation_mode') === args.mode;
+  }
+  async conditionHasFault() {
+    return this.getCapabilityValue('alarm_generic') === true;
   }
   async conditionTemperatureAbove(args) {
     return this.getCapabilityValue('measure_temperature') > args.temperature;

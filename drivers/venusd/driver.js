@@ -52,6 +52,8 @@ class VenusDDriver extends Homey.Driver {
       .registerRunListener(async (args) => args.device.conditionSOCBelow(args));
     this.homey.flow.getConditionCard('venusd_operation_mode_is')
       .registerRunListener(async (args) => args.device.conditionOperationModeIs(args));
+    this.homey.flow.getConditionCard('venusd_has_fault')
+      .registerRunListener(async (args) => args.device.conditionHasFault());
     this.homey.flow.getConditionCard('venusd_temperature_above')
       .registerRunListener(async (args) => args.device.conditionTemperatureAbove(args));
     this.homey.flow.getConditionCard('venusd_backup_mode_is')

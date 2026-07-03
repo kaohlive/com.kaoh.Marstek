@@ -944,20 +944,42 @@ async writeDeviceName(name, config) {
   }
 
   async processAlarmCodes(slaveId) {
+    // Fault-register findings from a full tester dump across firmware
+    // v158.1 and v149 (see project memory + community forum thread):
+    //
+    //   Register  v158.1     v149       Notes
+    //   36000     0x0000     0x0000     System alarms (PLL, temp, fan, ...)
+    //   36100     0x0000     0x0000     Grid faults
+    //   36101     0x0000     0x0000     Battery faults
+    //   36102     0x0000     0x0000     Unknown (community sheet: reserved?)
+    //   36103     0x0000     0x0940     "Hardware faults" per PDF - BUT the
+    //                                    v149 value is a stable constant on
+    //                                    healthy batteries that our PDF-based
+    //                                    bit interpretation reads as three
+    //                                    simultaneous hardware alarms. Removed
+    //                                    from the read set in v1.5.6 because
+    //                                    the semantics of 36103 have shifted
+    //                                    in newer firmware and we cannot tell
+    //                                    real faults from firmware-internal
+    //                                    status bits.
+    //   36104     Illegal    Illegal    Absent on all tested firmware.
+    //
+    // 36000 / 36100 / 36101 stay in the read loop as real error registers.
+    // A snapshot showing 0x0000 does NOT mean they never fire; that is the
+    // whole point of an error register. If a real fault occurs on those
+    // registers, we want the alarm capability + flow triggers + setWarning
+    // to fire so the user knows about it.
     try {
       const alarms = [];
       const systemAlarms = [];
       const gridAlarms = [];
       const batteryAlarms = [];
-      const hardwareAlarms = [];
-      const systemFaultAlarms = [];
       let hasAlarm = false;
 
       // Default register values (assume no alarms if register doesn't exist)
       let alarm_code = 0;
       let grid_fault = 0;
       let battery_fault = 0;
-      let hardware_fault = 0;
 
       // Try to read alarm code (36000) - System alarms
       try {
@@ -1015,45 +1037,18 @@ async writeDeviceName(name, config) {
         this.log(`Battery fault register 36101 not available: ${error.message}`);
       }
 
-      // Try to read hardware fault word (36103) - Hardware faults
-      try {
-        const reg_hardware_fault = await this.modbus.readHoldingRegisters(slaveId, 36103, 1);
-        hardware_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_hardware_fault));
+      // Register 36103 (hardware fault) deliberately not read - see
+      // header comment. Register 36104 was already absent on all tested
+      // firmwares.
 
-        if (hardware_fault > 0) {
-          hasAlarm = true;
-          if (hardware_fault & 0x001) { alarms.push('Hardware Bus Overvoltage'); hardwareAlarms.push('Hardware Bus Overvoltage'); }
-          if (hardware_fault & 0x002) { alarms.push('Hardware Output Overcurrent'); hardwareAlarms.push('Hardware Output Overcurrent'); }
-          if (hardware_fault & 0x004) { alarms.push('Hardware Trans Overcurrent'); hardwareAlarms.push('Hardware Trans Overcurrent'); }
-          if (hardware_fault & 0x008) { alarms.push('Hardware Battery Overcurrent'); hardwareAlarms.push('Hardware Battery Overcurrent'); }
-          if (hardware_fault & 0x010) { alarms.push('Hardware Protection'); hardwareAlarms.push('Hardware Protection'); }
-          if (hardware_fault & 0x020) { alarms.push('Output Overcurrent'); hardwareAlarms.push('Output Overcurrent'); }
-          if (hardware_fault & 0x040) { alarms.push('High Voltage Bus Overvoltage'); hardwareAlarms.push('High Voltage Bus Overvoltage'); }
-          if (hardware_fault & 0x080) { alarms.push('High Voltage Bus Undervoltage'); hardwareAlarms.push('High Voltage Bus Undervoltage'); }
-          if (hardware_fault & 0x100) { alarms.push('Overpower Protection'); hardwareAlarms.push('Overpower Protection'); }
-          if (hardware_fault & 0x200) { alarms.push('FSM Abnormal'); hardwareAlarms.push('FSM Abnormal'); }
-          if (hardware_fault & 0x400) { alarms.push('Overtemperature Protection'); hardwareAlarms.push('Overtemperature Protection'); }
-          if (hardware_fault & 0x800) { alarms.push('Inverter Soft Start Timeout'); hardwareAlarms.push('Inverter Soft Start Timeout'); }
-        }
-      } catch (error) {
-        this.log(`Hardware fault register 36103 not available: ${error.message}`);
-      }
-
-      // Register 36104 not available on this device - skipping system fault detection
-
-      // Alarm reporting policy. Fault registers on some Marstek firmware
-      // versions (notably V3 on firmware 149) return spurious bits that
-      // our code interprets as real alarms, generating false warnings
-      // while the battery works fine. The show_alarms setting gates the
-      // user-visible behaviour: 'auto' turns alarms off for V3 devices
-      // and on for V1/V2 devices. Diagnostic logs always fire so we can
-      // still investigate on any device.
+      // Alarm reporting policy. Now that we removed the known source of
+      // v149 false positives (36103), the auto default no longer needs
+      // to gate off V3 devices. 'auto' now means always show; the setting
+      // stays as an escape hatch for anyone who hits new spurious behaviour
+      // on future firmware without waiting for a code fix.
       const alarmPolicy = this.getSetting('show_alarms') || 'auto';
-      const showAlarms = alarmPolicy === 'always'
-        || (alarmPolicy === 'auto' && this.deviceVersion !== 'v3');
+      const showAlarms = alarmPolicy !== 'never';
 
-      // Update alarm capability - gated so V3 users on auto don't see a
-      // stuck "alarm active" indicator from spurious bits.
       const effectiveAlarm = showAlarms && hasAlarm;
       const currentAlarm = this.getCapabilityValue('alarm_generic');
       if (currentAlarm !== effectiveAlarm) {
@@ -1063,17 +1058,15 @@ async writeDeviceName(name, config) {
       // Always log detected alarms for diagnostics
       if (hasAlarm && alarms.length > 0) {
         const diagMessage = `Device alarms detected: ${alarms.join(', ')}`;
-        this.log(`Alarms detected: ${diagMessage}${showAlarms ? '' : ' (suppressed by show_alarms=' + alarmPolicy + ')'}`);
+        this.log(`Alarms detected: ${diagMessage}${showAlarms ? '' : ' (suppressed by show_alarms=never)'}`);
       }
 
-      // Set warning with specific alarm details and trigger workflow cards
       if (showAlarms && hasAlarm && alarms.length > 0) {
         const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
-        const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault},Hardware:${hardware_fault}`;
+        const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault}`;
 
         this.setWarning(alarmMessage);
 
-        // Trigger general battery fault detected event with tokens
         this.homey.flow.getDeviceTriggerCard('battery_fault_detected')
           .trigger(this,
             { message: alarmMessage, alarm_codes: alarmCodes },
@@ -1081,7 +1074,6 @@ async writeDeviceName(name, config) {
           )
           .catch(this.error);
 
-        // Trigger specific alarm type events with detailed messages for available registers
         if (gridAlarms.length > 0) {
           const gridMessage = gridAlarms.join(', ');
           this.homey.flow.getDeviceTriggerCard('grid_fault_detected')
@@ -1096,13 +1088,6 @@ async writeDeviceName(name, config) {
             .catch(this.error);
         }
 
-        if (hardwareAlarms.length > 0) {
-          const hardwareMessage = hardwareAlarms.join(', ');
-          this.homey.flow.getDeviceTriggerCard('hardware_fault_detected')
-            .trigger(this, { message: hardwareMessage }, {})
-            .catch(this.error);
-        }
-
         // Use generic battery warning for system alarms (since specific system fault register isn't available)
         if (systemAlarms.length > 0) {
           const warningMessage = systemAlarms.join(', ');
@@ -1114,14 +1099,9 @@ async writeDeviceName(name, config) {
             .catch(this.error);
         }
       } else {
-        // Clear any stale warning. Fires in three cases:
-        //   1. showAlarms=true, hasAlarm=false: normal no-alarms state
-        //   2. showAlarms=false: policy suppresses, so any prior warning
-        //      (from earlier polls on this build, or from prior versions
-        //      that fired alarms unconditionally) must be cleared on
-        //      upgrade so V3 users don't see leftover false alarms
-        //   3. hasAlarm=true but alarms.length=0: shouldn't happen but
-        //      safe default is no warning
+        // Clear stale warning: either policy suppresses (never) or the
+        // battery is currently fault-free. Also flushes leftover warnings
+        // from prior versions that fired unconditionally on 36103.
         this.unsetWarning();
       }
 

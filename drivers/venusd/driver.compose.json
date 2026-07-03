@@ -40,6 +40,7 @@
     "measure_temperature.mos1",
     "measure_temperature.mos2",
     "battery_charging_state",
+    "alarm_generic",
     "force_charge_mode",
     "operation_mode",
     "user_work_mode",
@@ -279,6 +280,24 @@
           "value": 3,
           "min": 1,
           "max": 10
+        },
+        {
+          "id": "show_alarms",
+          "type": "dropdown",
+          "label": {
+            "en": "Show fault alarms",
+            "nl": "Toon fouten"
+          },
+          "hint": {
+            "en": "Controls whether fault registers 36000/36100/36101 trigger user-visible warnings and flow cards on this Venus D. Set to 'Never show' as an escape hatch if a firmware update starts producing spurious bits on those registers.",
+            "nl": "Bepaalt of foutregisters 36000/36100/36101 zichtbare waarschuwingen en flow cards triggeren op deze Venus D. Kies 'Nooit tonen' als noodgreep als een firmware update valse bits op deze registers gaat zetten."
+          },
+          "value": "auto",
+          "values": [
+            { "id": "auto", "label": { "en": "Automatic (show real faults)", "nl": "Automatisch (toon echte fouten)" } },
+            { "id": "always", "label": { "en": "Always show", "nl": "Altijd tonen" } },
+            { "id": "never", "label": { "en": "Never show", "nl": "Nooit tonen" } }
+          ]
         }
       ]
     },
