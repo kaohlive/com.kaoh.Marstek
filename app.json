@@ -60,56 +60,120 @@
   "flow": {
     "triggers": [
       {
-        "id": "backup_mode_changed",
+        "id": "charging_status_changed",
         "title": {
-          "en": "Battery backup mode changed",
-          "nl": "Batterij backup modus is veranderd"
+          "en": "Charging status changed",
+          "nl": "Laadstatus gewijzigd"
         },
         "titleFormatted": {
-          "en": "Battery backup mode changed to [[mode]]",
-          "nl": "Batterij backup modus is veranderd naar [[mode]]"
+          "en": "Charging status changed",
+          "nl": "Laadstatus gewijzigd"
         },
-        "hint": {
-          "en": "Triggered when battery backup mode is enabled or disabled",
-          "nl": "Geactiveerd wanneer batterij backup modus wordt in- of uitgeschakeld"
-        },
-        "tokens": [
-          {
-            "name": "mode",
-            "type": "boolean",
-            "title": {
-              "en": "Backup Mode",
-              "nl": "Backup Modus"
-            }
-          }
-        ],
         "args": [
           {
-            "name": "mode",
-            "type": "dropdown",
-            "title": {
-              "en": "Mode",
-              "nl": "Modus"
-            },
-            "values": [
-              {
-                "id": "true",
-                "label": {
-                  "en": "Backup Active",
-                  "nl": "Backup Actief"
-                }
-              },
-              {
-                "id": "false",
-                "label": {
-                  "en": "Normal Mode",
-                  "nl": "Normale Modus"
-                }
-              }
-            ]
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
           }
         ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        "tokens": [
+          {
+            "name": "status",
+            "type": "string",
+            "title": {
+              "en": "Status",
+              "nl": "Status"
+            }
+          }
+        ]
+      },
+      {
+        "id": "battery_started_charging",
+        "title": {
+          "en": "Battery started charging",
+          "nl": "Batterij is gaan laden"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "battery_started_discharging",
+        "title": {
+          "en": "Battery started discharging",
+          "nl": "Batterij is gaan ontladen"
+        },
+        "titleFormatted": {
+          "en": "Battery started discharging",
+          "nl": "Batterij is gaan ontladen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "soc_below_threshold",
+        "title": {
+          "en": "Battery level dropped below threshold",
+          "nl": "Batterijniveau onder drempel"
+        },
+        "titleFormatted": {
+          "en": "Battery level dropped below threshold",
+          "nl": "Batterijniveau onder threshold"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "threshold",
+            "type": "number",
+            "title": {
+              "en": "Threshold (%)",
+              "nl": "Drempel (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "soc_above_threshold",
+        "title": {
+          "en": "Battery level rose above threshold",
+          "nl": "Batterijniveau boven drempel"
+        },
+        "titleFormatted": {
+          "en": "Battery level rose above threshold",
+          "nl": "Batterijniveau boven threshold"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "threshold",
+            "type": "number",
+            "title": {
+              "en": "Threshold (%)",
+              "nl": "Drempel (%)"
+            }
+          }
+        ]
       },
       {
         "id": "battery_fault_detected",
@@ -143,57 +207,13 @@
             }
           }
         ],
-        "args": [],
-        "filter": "driver_id=venus"
-      },
-      {
-        "id": "battery_started_charging",
-        "title": {
-          "en": "Battery started charging",
-          "nl": "Batterij is gaan laden"
-        },
-        "args": [],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "battery_started_discharging",
-        "title": {
-          "en": "Battery started discharging",
-          "nl": "Batterij is gaan ontladen"
-        },
-        "titleFormatted": {
-          "en": "Battery started discharging",
-          "nl": "Batterij is gaan ontladen"
-        },
-        "args": [],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "battery_system_fault_detected",
-        "title": {
-          "en": "Battery system fault detected",
-          "nl": "Batterijsysteem fout gedetecteerd"
-        },
-        "titleFormatted": {
-          "en": "Battery system fault detected",
-          "nl": "Batterijsysteem fout gedetecteerd"
-        },
-        "hint": {
-          "en": "Triggered when battery system faults are detected",
-          "nl": "Geactiveerd wanneer batterijsysteem fouten worden gedetecteerd"
-        },
-        "tokens": [
+        "args": [
           {
-            "name": "message",
-            "type": "string",
-            "title": {
-              "en": "Battery System Fault Details",
-              "nl": "Batterijsysteem Fout Details"
-            }
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
           }
-        ],
-        "args": [],
-        "filter": "driver_id=venus"
+        ]
       },
       {
         "id": "battery_warning_detected",
@@ -227,31 +247,253 @@
             }
           }
         ],
-        "args": [],
-        "filter": "driver_id=venus"
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
       },
       {
-        "id": "charging_status_changed",
+        "id": "grid_fault_detected",
         "title": {
-          "en": "Charging status changed",
-          "nl": "Laadstatus gewijzigd"
+          "en": "Grid fault detected",
+          "nl": "Netwerkfout gedetecteerd"
         },
         "titleFormatted": {
-          "en": "Charging status changed",
-          "nl": "Laadstatus gewijzigd"
+          "en": "Grid fault detected",
+          "nl": "Netwerkfout gedetecteerd"
         },
-        "args": [],
+        "hint": {
+          "en": "Triggered when grid-related faults are detected",
+          "nl": "Geactiveerd wanneer netwerkgerelateerde fouten worden gedetecteerd"
+        },
         "tokens": [
           {
-            "name": "status",
+            "name": "message",
             "type": "string",
             "title": {
-              "en": "Status",
-              "nl": "Status"
+              "en": "Grid Fault Details",
+              "nl": "Netwerkfout Details"
             }
           }
         ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "battery_system_fault_detected",
+        "title": {
+          "en": "Battery system fault detected",
+          "nl": "Batterijsysteem fout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Battery system fault detected",
+          "nl": "Batterijsysteem fout gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when battery system faults are detected",
+          "nl": "Geactiveerd wanneer batterijsysteem fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Battery System Fault Details",
+              "nl": "Batterijsysteem Fout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "hardware_fault_detected",
+        "title": {
+          "en": "Hardware fault detected",
+          "nl": "Hardware fout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "Hardware fault detected",
+          "nl": "Hardware fout gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when hardware faults are detected",
+          "nl": "Geactiveerd wanneer hardware fouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "Hardware Fault Details",
+              "nl": "Hardware Fout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "system_fault_detected",
+        "title": {
+          "en": "System fault detected",
+          "nl": "Systeemfout gedetecteerd"
+        },
+        "titleFormatted": {
+          "en": "System fault detected",
+          "nl": "Systeemfout gedetecteerd"
+        },
+        "hint": {
+          "en": "Triggered when system faults are detected",
+          "nl": "Geactiveerd wanneer systeemfouten worden gedetecteerd"
+        },
+        "tokens": [
+          {
+            "name": "message",
+            "type": "string",
+            "title": {
+              "en": "System Fault Details",
+              "nl": "Systeemfout Details"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "temperature_too_high",
+        "title": {
+          "en": "Battery temperature too high",
+          "nl": "Batterijtemperatuur te hoog"
+        },
+        "titleFormatted": {
+          "en": "Battery temperature too high",
+          "nl": "Batterijtemperatuur te hoog"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "temperature",
+            "type": "number",
+            "title": {
+              "en": "Temperature (°C)",
+              "nl": "Temperatuur (°C)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "temperature_too_low",
+        "title": {
+          "en": "Battery temperature too low",
+          "nl": "Batterijtemperatuur te laag"
+        },
+        "titleFormatted": {
+          "en": "Battery temperature too low",
+          "nl": "Batterijtemperatuur te laag"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ],
+        "tokens": [
+          {
+            "name": "temperature",
+            "type": "number",
+            "title": {
+              "en": "Temperature (°C)",
+              "nl": "Temperatuur (°C)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "backup_mode_changed",
+        "title": {
+          "en": "Battery backup mode changed",
+          "nl": "Batterij backup modus is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Battery backup mode changed to [[mode]]",
+          "nl": "Batterij backup modus is veranderd naar [[mode]]"
+        },
+        "hint": {
+          "en": "Triggered when battery backup mode is enabled or disabled",
+          "nl": "Geactiveerd wanneer batterij backup modus wordt in- of uitgeschakeld"
+        },
+        "tokens": [
+          {
+            "name": "mode",
+            "type": "boolean",
+            "title": {
+              "en": "Backup Mode",
+              "nl": "Backup Modus"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "mode",
+            "type": "dropdown",
+            "title": {
+              "en": "Mode",
+              "nl": "Modus"
+            },
+            "values": [
+              {
+                "id": "true",
+                "label": {
+                  "en": "Backup Active",
+                  "nl": "Backup Actief"
+                }
+              },
+              {
+                "id": "false",
+                "label": {
+                  "en": "Normal Mode",
+                  "nl": "Normale Modus"
+                }
+              }
+            ]
+          }
+        ]
       },
       {
         "id": "force_charge_mode_changed",
@@ -278,6 +520,11 @@
           }
         ],
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -323,179 +570,7 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "force_charge_power_changed",
-        "title": {
-          "en": "Force charge power changed",
-          "nl": "Gedwongen laad vermogen is veranderd"
-        },
-        "titleFormatted": {
-          "en": "Force charge power changed to [[power]] W",
-          "nl": "Gedwongen laad vermogen is veranderd naar [[power]] W"
-        },
-        "hint": {
-          "en": "Triggered when force charge power setting changes",
-          "nl": "Geactiveerd wanneer gedwongen laad vermogen instelling verandert"
-        },
-        "tokens": [
-          {
-            "name": "power",
-            "type": "number",
-            "title": {
-              "en": "Power",
-              "nl": "Vermogen"
-            }
-          }
-        ],
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "force_charge_target_changed",
-        "title": {
-          "en": "Force SOC target changed",
-          "nl": "Gedwongen SOC doel is veranderd"
-        },
-        "titleFormatted": {
-          "en": "Force SOC target changed to [[target]]%",
-          "nl": "Gedwongen SOC doel is veranderd naar [[target]]%"
-        },
-        "hint": {
-          "en": "Triggered when force SOC target setting changes",
-          "nl": "Geactiveerd wanneer gedwongen SOC doel instelling verandert"
-        },
-        "tokens": [
-          {
-            "name": "target",
-            "type": "number",
-            "title": {
-              "en": "SOC Target",
-              "nl": "SOC Doel"
-            }
-          }
-        ],
-        "args": [
-          {
-            "name": "target",
-            "type": "range",
-            "title": {
-              "en": "SOC Target (%)",
-              "nl": "SOC Doel (%)"
-            },
-            "min": 11,
-            "max": 100,
-            "step": 1
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "force_discharge_power_changed",
-        "title": {
-          "en": "Force discharge power changed",
-          "nl": "Gedwongen ontlaad vermogen is veranderd"
-        },
-        "titleFormatted": {
-          "en": "Force discharge power changed to [[power]] W",
-          "nl": "Gedwongen ontlaad vermogen is veranderd naar [[power]] W"
-        },
-        "hint": {
-          "en": "Triggered when force discharge power setting changes",
-          "nl": "Geactiveerd wanneer gedwongen ontlaad vermogen instelling verandert"
-        },
-        "tokens": [
-          {
-            "name": "power",
-            "type": "number",
-            "title": {
-              "en": "Power",
-              "nl": "Vermogen"
-            }
-          }
-        ],
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "grid_fault_detected",
-        "title": {
-          "en": "Grid fault detected",
-          "nl": "Netwerkfout gedetecteerd"
-        },
-        "titleFormatted": {
-          "en": "Grid fault detected",
-          "nl": "Netwerkfout gedetecteerd"
-        },
-        "hint": {
-          "en": "Triggered when grid-related faults are detected",
-          "nl": "Geactiveerd wanneer netwerkgerelateerde fouten worden gedetecteerd"
-        },
-        "tokens": [
-          {
-            "name": "message",
-            "type": "string",
-            "title": {
-              "en": "Grid Fault Details",
-              "nl": "Netwerkfout Details"
-            }
-          }
-        ],
-        "args": [],
-        "filter": "driver_id=venus"
-      },
-      {
-        "id": "hardware_fault_detected",
-        "title": {
-          "en": "Hardware fault detected",
-          "nl": "Hardware fout gedetecteerd"
-        },
-        "titleFormatted": {
-          "en": "Hardware fault detected",
-          "nl": "Hardware fout gedetecteerd"
-        },
-        "hint": {
-          "en": "Triggered when hardware faults are detected",
-          "nl": "Geactiveerd wanneer hardware fouten worden gedetecteerd"
-        },
-        "tokens": [
-          {
-            "name": "message",
-            "type": "string",
-            "title": {
-              "en": "Hardware Fault Details",
-              "nl": "Hardware Fout Details"
-            }
-          }
-        ],
-        "args": [],
-        "filter": "driver_id=venus"
+        ]
       },
       {
         "id": "operation_mode_changed",
@@ -531,6 +606,11 @@
         ],
         "args": [
           {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
             "name": "mode",
             "type": "dropdown",
             "title": {
@@ -582,127 +662,7 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "soc_above_threshold",
-        "title": {
-          "en": "Battery level rose above threshold",
-          "nl": "Batterijniveau boven drempel"
-        },
-        "titleFormatted": {
-          "en": "Battery level rose above threshold",
-          "nl": "Batterijniveau boven threshold"
-        },
-        "args": [],
-        "tokens": [
-          {
-            "name": "threshold",
-            "type": "number",
-            "title": {
-              "en": "Threshold (%)",
-              "nl": "Drempel (%)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "soc_below_threshold",
-        "title": {
-          "en": "Battery level dropped below threshold",
-          "nl": "Batterijniveau onder drempel"
-        },
-        "titleFormatted": {
-          "en": "Battery level dropped below threshold",
-          "nl": "Batterijniveau onder threshold"
-        },
-        "args": [],
-        "tokens": [
-          {
-            "name": "threshold",
-            "type": "number",
-            "title": {
-              "en": "Threshold (%)",
-              "nl": "Drempel (%)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "system_fault_detected",
-        "title": {
-          "en": "System fault detected",
-          "nl": "Systeemfout gedetecteerd"
-        },
-        "titleFormatted": {
-          "en": "System fault detected",
-          "nl": "Systeemfout gedetecteerd"
-        },
-        "hint": {
-          "en": "Triggered when system faults are detected",
-          "nl": "Geactiveerd wanneer systeemfouten worden gedetecteerd"
-        },
-        "tokens": [
-          {
-            "name": "message",
-            "type": "string",
-            "title": {
-              "en": "System Fault Details",
-              "nl": "Systeemfout Details"
-            }
-          }
-        ],
-        "args": [],
-        "filter": "driver_id=venus"
-      },
-      {
-        "id": "temperature_too_high",
-        "title": {
-          "en": "Battery temperature too high",
-          "nl": "Batterijtemperatuur te hoog"
-        },
-        "titleFormatted": {
-          "en": "Battery temperature too high",
-          "nl": "Batterijtemperatuur te hoog"
-        },
-        "args": [],
-        "tokens": [
-          {
-            "name": "temperature",
-            "type": "number",
-            "title": {
-              "en": "Temperature (°C)",
-              "nl": "Temperatuur (°C)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "temperature_too_low",
-        "title": {
-          "en": "Battery temperature too low",
-          "nl": "Batterijtemperatuur te laag"
-        },
-        "titleFormatted": {
-          "en": "Battery temperature too low",
-          "nl": "Batterijtemperatuur te laag"
-        },
-        "args": [],
-        "tokens": [
-          {
-            "name": "temperature",
-            "type": "number",
-            "title": {
-              "en": "Temperature (°C)",
-              "nl": "Temperatuur (°C)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
         "id": "user_work_mode_changed",
@@ -731,6 +691,11 @@
         ],
         "args": [
           {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
             "name": "mode",
             "type": "dropdown",
             "title": {
@@ -768,8 +733,136 @@
               }
             ]
           }
+        ]
+      },
+      {
+        "id": "force_charge_power_changed",
+        "title": {
+          "en": "Force charge power changed",
+          "nl": "Gedwongen laad vermogen is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force charge power changed to [[power]] W",
+          "nl": "Gedwongen laad vermogen is veranderd naar [[power]] W"
+        },
+        "hint": {
+          "en": "Triggered when force charge power setting changes",
+          "nl": "Geactiveerd wanneer gedwongen laad vermogen instelling verandert"
+        },
+        "tokens": [
+          {
+            "name": "power",
+            "type": "number",
+            "title": {
+              "en": "Power",
+              "nl": "Vermogen"
+            }
+          }
         ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_discharge_power_changed",
+        "title": {
+          "en": "Force discharge power changed",
+          "nl": "Gedwongen ontlaad vermogen is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force discharge power changed to [[power]] W",
+          "nl": "Gedwongen ontlaad vermogen is veranderd naar [[power]] W"
+        },
+        "hint": {
+          "en": "Triggered when force discharge power setting changes",
+          "nl": "Geactiveerd wanneer gedwongen ontlaad vermogen instelling verandert"
+        },
+        "tokens": [
+          {
+            "name": "power",
+            "type": "number",
+            "title": {
+              "en": "Power",
+              "nl": "Vermogen"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_charge_target_changed",
+        "title": {
+          "en": "Force SOC target changed",
+          "nl": "Gedwongen SOC doel is veranderd"
+        },
+        "titleFormatted": {
+          "en": "Force SOC target changed to [[target]]%",
+          "nl": "Gedwongen SOC doel is veranderd naar [[target]]%"
+        },
+        "hint": {
+          "en": "Triggered when force SOC target setting changes",
+          "nl": "Geactiveerd wanneer gedwongen SOC doel instelling verandert"
+        },
+        "tokens": [
+          {
+            "name": "target",
+            "type": "number",
+            "title": {
+              "en": "SOC Target",
+              "nl": "SOC Doel"
+            }
+          }
+        ],
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "target",
+            "type": "range",
+            "title": {
+              "en": "SOC Target (%)",
+              "nl": "SOC Doel (%)"
+            },
+            "min": 11,
+            "max": 100,
+            "step": 1
+          }
+        ]
       }
     ],
     "conditions": [
@@ -788,6 +881,11 @@
           "nl": "Controleer of batterij backup modus is ingeschakeld of uitgeschakeld"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -812,66 +910,7 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "charging_cutoff_soc_above",
-        "title": {
-          "en": "Charging cutoff SOC is above",
-          "nl": "Laad afkap SOC is boven"
-        },
-        "titleFormatted": {
-          "en": "Charging cutoff SOC !{{is above|is not above}} [[percentage]]%",
-          "nl": "Laad afkap SOC !{{is boven|is niet boven}} [[percentage]]%"
-        },
-        "hint": {
-          "en": "Check if the charging cutoff SOC setting is above a threshold",
-          "nl": "Controleer of de laad afkap SOC instelling boven een drempel is"
-        },
-        "args": [
-          {
-            "name": "percentage",
-            "type": "range",
-            "title": {
-              "en": "Percentage (%)",
-              "nl": "Percentage (%)"
-            },
-            "min": 40,
-            "max": 100,
-            "step": 1
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "discharging_cutoff_soc_above",
-        "title": {
-          "en": "Discharging cutoff SOC is above",
-          "nl": "Ontlaad afkap SOC is boven"
-        },
-        "titleFormatted": {
-          "en": "Discharging cutoff SOC (reserve) !{{is above|is not above}} [[percentage]]%",
-          "nl": "Ontlaad afkap SOC (reserve) !{{is boven|is niet boven}} [[percentage]]%"
-        },
-        "hint": {
-          "en": "Check if the discharging cutoff SOC (reserve) setting is above a threshold",
-          "nl": "Controleer of de ontlaad afkap SOC (reserve) instelling boven een drempel is"
-        },
-        "args": [
-          {
-            "name": "percentage",
-            "type": "range",
-            "title": {
-              "en": "Percentage (%)",
-              "nl": "Percentage (%)"
-            },
-            "min": 12,
-            "max": 30,
-            "step": 1
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
         "id": "force_charge_mode_is",
@@ -888,6 +927,11 @@
           "nl": "Controleer huidige gedwongen laadmodus"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -933,192 +977,7 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "force_charge_power_greater_than",
-        "title": {
-          "en": "Force charge power is greater than",
-          "nl": "Gedwongen laad vermogen is groter dan"
-        },
-        "titleFormatted": {
-          "en": "Force charge power !{{is greater than|is not greater than}} [[power]] W",
-          "nl": "Gedwongen laad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
-        },
-        "hint": {
-          "en": "Check if force charge power is above a threshold",
-          "nl": "Controleer of gedwongen laad vermogen boven een drempel is"
-        },
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "force_charge_target_greater_than",
-        "title": {
-          "en": "Force SOC target is greater than",
-          "nl": "Gedwongen SOC doel is groter dan"
-        },
-        "titleFormatted": {
-          "en": "Force SOC target !{{is greater than|is not greater than}} [[target]]%",
-          "nl": "Gedwongen SOC doel !{{is groter dan|is niet groter dan}} [[target]]%"
-        },
-        "hint": {
-          "en": "Check if force SOC target is above a threshold",
-          "nl": "Controleer of gedwongen SOC doel boven een drempel is"
-        },
-        "args": [
-          {
-            "name": "target",
-            "type": "range",
-            "title": {
-              "en": "SOC Target (%)",
-              "nl": "SOC Doel (%)"
-            },
-            "min": 11,
-            "max": 100,
-            "step": 1
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "force_discharge_power_greater_than",
-        "title": {
-          "en": "Force discharge power is greater than",
-          "nl": "Gedwongen ontlaad vermogen is groter dan"
-        },
-        "titleFormatted": {
-          "en": "Force discharge power !{{is greater than|is not greater than}} [[power]] W",
-          "nl": "Gedwongen ontlaad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
-        },
-        "hint": {
-          "en": "Check if force discharge power is above a threshold",
-          "nl": "Controleer of gedwongen ontlaad vermogen boven een drempel is"
-        },
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "has_fault",
-        "title": {
-          "en": "Battery has fault",
-          "nl": "Batterij heeft storing"
-        },
-        "titleFormatted": {
-          "en": "Battery !{{has|does not have}} a fault",
-          "nl": "Batterij !{{heeft|heeft geen}} storing"
-        },
-        "args": [],
-        "filter": "driver_id=venus"
-      },
-      {
-        "id": "is_charging",
-        "title": {
-          "en": "Battery is charging",
-          "nl": "Batterij is aan het laden"
-        },
-        "titleFormatted": {
-          "en": "Battery !{{is|is not}} charging",
-          "nl": "Batterij !{{is|is niet}} aan het laden"
-        },
-        "args": [],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "is_discharging",
-        "title": {
-          "en": "Battery is discharging",
-          "nl": "Batterij is aan het ontladen"
-        },
-        "titleFormatted": {
-          "en": "Battery !{{is|is not}} discharging",
-          "nl": "Batterij !{{is|is niet}} aan het ontladen"
-        },
-        "args": [],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "max_charge_power_limit_below",
-        "title": {
-          "en": "Max charge power limit is below",
-          "nl": "Max laad vermogen limiet is onder"
-        },
-        "titleFormatted": {
-          "en": "Max charge power limit !{{is below|is not below}} [[power]] W",
-          "nl": "Max laad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
-        },
-        "hint": {
-          "en": "Check if the device protection system is limiting charge power below a threshold (e.g. due to low temperature)",
-          "nl": "Controleer of het apparaatbeveiligingssysteem het laadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
-        },
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "max_discharge_power_limit_below",
-        "title": {
-          "en": "Max discharge power limit is below",
-          "nl": "Max ontlaad vermogen limiet is onder"
-        },
-        "titleFormatted": {
-          "en": "Max discharge power limit !{{is below|is not below}} [[power]] W",
-          "nl": "Max ontlaad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
-        },
-        "hint": {
-          "en": "Check if the device protection system is limiting discharge power below a threshold (e.g. due to low temperature)",
-          "nl": "Controleer of het apparaatbeveiligingssysteem het ontlaadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
-        },
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
         "id": "operation_mode_is",
@@ -1135,6 +994,11 @@
           "nl": "Controleer huidige batterij bedrijfsmodus"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -1187,83 +1051,7 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "soc_above",
-        "title": {
-          "en": "Battery level is above",
-          "nl": "Batterijniveau is boven"
-        },
-        "titleFormatted": {
-          "en": "Battery level !{{is above|is not above}} [[percentage]]%",
-          "nl": "Batterijniveau !{{is boven|is niet boven}} [[percentage]]%"
-        },
-        "args": [
-          {
-            "name": "percentage",
-            "type": "number",
-            "min": 0,
-            "max": 100,
-            "step": 1,
-            "title": {
-              "en": "Percentage (%)",
-              "nl": "Percentage (%)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "soc_below",
-        "title": {
-          "en": "Battery level is below",
-          "nl": "Batterijniveau is onder"
-        },
-        "titleFormatted": {
-          "en": "Battery level !{{is below|is not below}} [[percentage]]%",
-          "nl": "Batterijniveau !{{is onder|is niet onder}} [[percentage]]%"
-        },
-        "args": [
-          {
-            "name": "percentage",
-            "type": "number",
-            "min": 0,
-            "max": 100,
-            "step": 1,
-            "title": {
-              "en": "Percentage (%)",
-              "nl": "Percentage (%)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "temperature_above",
-        "title": {
-          "en": "Temperature is above",
-          "nl": "Temperatuur is boven"
-        },
-        "titleFormatted": {
-          "en": "Temperature !{{is above|is not above}} [[temperature]]°C",
-          "nl": "Temperatuur !{{is boven|is niet boven}} [[temperature]]°C"
-        },
-        "args": [
-          {
-            "name": "temperature",
-            "type": "number",
-            "min": -50,
-            "max": 100,
-            "step": 1,
-            "title": {
-              "en": "Temperature (°C)",
-              "nl": "Temperatuur (°C)"
-            }
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
         "id": "user_work_mode_is",
@@ -1281,6 +1069,11 @@
           "nl": "Controleer huidige optimalizatie modus"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -1319,53 +1112,382 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      }
-    ],
-    "actions": [
+        ]
+      },
       {
-        "id": "set_backup_mode",
+        "id": "force_charge_power_greater_than",
         "title": {
-          "en": "Set battery backup mode",
-          "nl": "Batterij backup modus instellen"
+          "en": "Force charge power is greater than",
+          "nl": "Gedwongen laad vermogen is groter dan"
         },
         "titleFormatted": {
-          "en": "Set battery backup mode to [[mode]]",
-          "nl": "Batterij backup modus instellen op [[mode]]"
+          "en": "Force charge power !{{is greater than|is not greater than}} [[power]] W",
+          "nl": "Gedwongen laad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
         },
         "hint": {
-          "en": "Enable or disable battery backup mode",
-          "nl": "Batterij backup modus in- of uitschakelen"
+          "en": "Check if force charge power is above a threshold",
+          "nl": "Controleer of gedwongen laad vermogen boven een drempel is"
         },
         "args": [
           {
-            "name": "mode",
-            "type": "dropdown",
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
             "title": {
-              "en": "Mode",
-              "nl": "Modus"
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
             },
-            "values": [
-              {
-                "id": "true",
-                "label": {
-                  "en": "Backup Active",
-                  "nl": "Backup Actief"
-                }
-              },
-              {
-                "id": "false",
-                "label": {
-                  "en": "Normal Mode",
-                  "nl": "Normale Modus"
-                }
-              }
-            ]
+            "min": 0,
+            "max": 2500,
+            "step": 5
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
+      {
+        "id": "force_discharge_power_greater_than",
+        "title": {
+          "en": "Force discharge power is greater than",
+          "nl": "Gedwongen ontlaad vermogen is groter dan"
+        },
+        "titleFormatted": {
+          "en": "Force discharge power !{{is greater than|is not greater than}} [[power]] W",
+          "nl": "Gedwongen ontlaad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
+        },
+        "hint": {
+          "en": "Check if force discharge power is above a threshold",
+          "nl": "Controleer of gedwongen ontlaad vermogen boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "force_charge_target_greater_than",
+        "title": {
+          "en": "Force SOC target is greater than",
+          "nl": "Gedwongen SOC doel is groter dan"
+        },
+        "titleFormatted": {
+          "en": "Force SOC target !{{is greater than|is not greater than}} [[target]]%",
+          "nl": "Gedwongen SOC doel !{{is groter dan|is niet groter dan}} [[target]]%"
+        },
+        "hint": {
+          "en": "Check if force SOC target is above a threshold",
+          "nl": "Controleer of gedwongen SOC doel boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "target",
+            "type": "range",
+            "title": {
+              "en": "SOC Target (%)",
+              "nl": "SOC Doel (%)"
+            },
+            "min": 11,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "id": "is_charging",
+        "title": {
+          "en": "Battery is charging",
+          "nl": "Batterij is aan het laden"
+        },
+        "titleFormatted": {
+          "en": "Battery !{{is|is not}} charging",
+          "nl": "Batterij !{{is|is niet}} aan het laden"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "is_discharging",
+        "title": {
+          "en": "Battery is discharging",
+          "nl": "Batterij is aan het ontladen"
+        },
+        "titleFormatted": {
+          "en": "Battery !{{is|is not}} discharging",
+          "nl": "Batterij !{{is|is niet}} aan het ontladen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "soc_above",
+        "title": {
+          "en": "Battery level is above",
+          "nl": "Batterijniveau is boven"
+        },
+        "titleFormatted": {
+          "en": "Battery level !{{is above|is not above}} [[percentage]]%",
+          "nl": "Batterijniveau !{{is boven|is niet boven}} [[percentage]]%"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "number",
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "soc_below",
+        "title": {
+          "en": "Battery level is below",
+          "nl": "Batterijniveau is onder"
+        },
+        "titleFormatted": {
+          "en": "Battery level !{{is below|is not below}} [[percentage]]%",
+          "nl": "Batterijniveau !{{is onder|is niet onder}} [[percentage]]%"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "number",
+            "min": 0,
+            "max": 100,
+            "step": 1,
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "has_fault",
+        "title": {
+          "en": "Battery has fault",
+          "nl": "Batterij heeft storing"
+        },
+        "titleFormatted": {
+          "en": "Battery !{{has|does not have}} a fault",
+          "nl": "Batterij !{{heeft|heeft geen}} storing"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          }
+        ]
+      },
+      {
+        "id": "temperature_above",
+        "title": {
+          "en": "Temperature is above",
+          "nl": "Temperatuur is boven"
+        },
+        "titleFormatted": {
+          "en": "Temperature !{{is above|is not above}} [[temperature]]°C",
+          "nl": "Temperatuur !{{is boven|is niet boven}} [[temperature]]°C"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "temperature",
+            "type": "number",
+            "min": -50,
+            "max": 100,
+            "step": 1,
+            "title": {
+              "en": "Temperature (°C)",
+              "nl": "Temperatuur (°C)"
+            }
+          }
+        ]
+      },
+      {
+        "id": "max_charge_power_limit_below",
+        "title": {
+          "en": "Max charge power limit is below",
+          "nl": "Max laad vermogen limiet is onder"
+        },
+        "titleFormatted": {
+          "en": "Max charge power limit !{{is below|is not below}} [[power]] W",
+          "nl": "Max laad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
+        },
+        "hint": {
+          "en": "Check if the device protection system is limiting charge power below a threshold (e.g. due to low temperature)",
+          "nl": "Controleer of het apparaatbeveiligingssysteem het laadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "max_discharge_power_limit_below",
+        "title": {
+          "en": "Max discharge power limit is below",
+          "nl": "Max ontlaad vermogen limiet is onder"
+        },
+        "titleFormatted": {
+          "en": "Max discharge power limit !{{is below|is not below}} [[power]] W",
+          "nl": "Max ontlaad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
+        },
+        "hint": {
+          "en": "Check if the device protection system is limiting discharge power below a threshold (e.g. due to low temperature)",
+          "nl": "Controleer of het apparaatbeveiligingssysteem het ontlaadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "charging_cutoff_soc_above",
+        "title": {
+          "en": "Charging cutoff SOC is above",
+          "nl": "Laad afkap SOC is boven"
+        },
+        "titleFormatted": {
+          "en": "Charging cutoff SOC !{{is above|is not above}} [[percentage]]%",
+          "nl": "Laad afkap SOC !{{is boven|is niet boven}} [[percentage]]%"
+        },
+        "hint": {
+          "en": "Check if the charging cutoff SOC setting is above a threshold",
+          "nl": "Controleer of de laad afkap SOC instelling boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 40,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "id": "discharging_cutoff_soc_above",
+        "title": {
+          "en": "Discharging cutoff SOC is above",
+          "nl": "Ontlaad afkap SOC is boven"
+        },
+        "titleFormatted": {
+          "en": "Discharging cutoff SOC (reserve) !{{is above|is not above}} [[percentage]]%",
+          "nl": "Ontlaad afkap SOC (reserve) !{{is boven|is niet boven}} [[percentage]]%"
+        },
+        "hint": {
+          "en": "Check if the discharging cutoff SOC (reserve) setting is above a threshold",
+          "nl": "Controleer of de ontlaad afkap SOC (reserve) instelling boven een drempel is"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 12,
+            "max": 30,
+            "step": 1
+          }
+        ]
+      }
+    ],
+    "actions": [
       {
         "deprecated": true,
         "id": "set_charge_mode",
@@ -1382,6 +1504,11 @@
           "nl": "Batterij laadmodus veranderen"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -1406,66 +1533,53 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
-        "id": "set_charging_cutoff_soc",
+        "id": "set_backup_mode",
         "title": {
-          "en": "Set charging cutoff SOC",
-          "nl": "Laad afkap SOC instellen"
+          "en": "Set battery backup mode",
+          "nl": "Batterij backup modus instellen"
         },
         "titleFormatted": {
-          "en": "Set charging cutoff SOC to [[percentage]]%",
-          "nl": "Laad afkap SOC instellen op [[percentage]]%"
+          "en": "Set battery backup mode to [[mode]]",
+          "nl": "Batterij backup modus instellen op [[mode]]"
         },
         "hint": {
-          "en": "Set the SOC level at which charging stops (40-100%)",
-          "nl": "Stel het SOC niveau in waarbij laden stopt (40-100%)"
+          "en": "Enable or disable battery backup mode",
+          "nl": "Batterij backup modus in- of uitschakelen"
         },
         "args": [
           {
-            "name": "percentage",
-            "type": "range",
-            "title": {
-              "en": "Percentage (%)",
-              "nl": "Percentage (%)"
-            },
-            "min": 40,
-            "max": 100,
-            "step": 1
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "set_discharging_cutoff_soc",
-        "title": {
-          "en": "Set discharging cutoff SOC (reserve)",
-          "nl": "Ontlaad afkap SOC (reserve) instellen"
-        },
-        "titleFormatted": {
-          "en": "Set discharging cutoff SOC to [[percentage]]%",
-          "nl": "Ontlaad afkap SOC instellen op [[percentage]]%"
-        },
-        "hint": {
-          "en": "Set the SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
-          "nl": "Stel het SOC reserve niveau in waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
-        },
-        "args": [
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
-            "name": "percentage",
-            "type": "range",
+            "name": "mode",
+            "type": "dropdown",
             "title": {
-              "en": "Percentage (%)",
-              "nl": "Percentage (%)"
+              "en": "Mode",
+              "nl": "Modus"
             },
-            "min": 12,
-            "max": 30,
-            "step": 1
+            "values": [
+              {
+                "id": "true",
+                "label": {
+                  "en": "Backup Active",
+                  "nl": "Backup Actief"
+                }
+              },
+              {
+                "id": "false",
+                "label": {
+                  "en": "Normal Mode",
+                  "nl": "Normale Modus"
+                }
+              }
+            ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
         "id": "set_force_charge_mode",
@@ -1483,6 +1597,11 @@
           "nl": "Batterij laadmodus veranderen"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -1528,97 +1647,7 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "set_force_charge_power",
-        "deprecated": true,
-        "title": {
-          "en": "Set force charge power",
-          "nl": "Gedwongen laad vermogen instellen"
-        },
-        "titleFormatted": {
-          "en": "Set force charge power to [[power]] W",
-          "nl": "Gedwongen laad vermogen instellen op [[power]] W"
-        },
-        "hint": {
-          "en": "Set power setting for forced charge",
-          "nl": "Vermogen instelling voor gedwongen laden instellen"
-        },
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "set_force_charge_target",
-        "title": {
-          "en": "Set force SOC target",
-          "nl": "Gedwongen SOC doel instellen"
-        },
-        "titleFormatted": {
-          "en": "Set force SOC target to [[target]]%",
-          "nl": "Gedwongen SOC doel instellen op [[target]]%"
-        },
-        "hint": {
-          "en": "Set target SOC setting for force (dis)charge",
-          "nl": "Doel SOC instelling voor gedwongen (ont)laden instellen"
-        },
-        "args": [
-          {
-            "name": "target",
-            "type": "range",
-            "title": {
-              "en": "SOC Target (%)",
-              "nl": "SOC Doel (%)"
-            },
-            "min": 11,
-            "max": 100,
-            "step": 1
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
-      },
-      {
-        "id": "set_force_discharge_power",
-        "deprecated": true,
-        "title": {
-          "en": "Set force discharge power",
-          "nl": "Gedwongen ontlaad vermogen instellen"
-        },
-        "titleFormatted": {
-          "en": "Set force discharge power to [[power]] W",
-          "nl": "Gedwongen ontlaad vermogen instellen op [[power]] W"
-        },
-        "hint": {
-          "en": "Set power setting for forced discharge",
-          "nl": "Vermogen instelling voor gedwongen ontladen instellen"
-        },
-        "args": [
-          {
-            "name": "power",
-            "type": "range",
-            "title": {
-              "en": "Power (W)",
-              "nl": "Vermogen (W)"
-            },
-            "min": 0,
-            "max": 2500,
-            "step": 5
-          }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
       },
       {
         "id": "set_user_work_mode",
@@ -1636,6 +1665,11 @@
           "nl": "Optimalizatie modus selectie veranderen"
         },
         "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
           {
             "name": "mode",
             "type": "dropdown",
@@ -1674,8 +1708,174 @@
               }
             ]
           }
-        ],
-        "filter": "driver_id=venus|driver_id=venusd"
+        ]
+      },
+      {
+        "id": "set_force_charge_power",
+        "deprecated": true,
+        "title": {
+          "en": "Set force charge power",
+          "nl": "Gedwongen laad vermogen instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force charge power to [[power]] W",
+          "nl": "Gedwongen laad vermogen instellen op [[power]] W"
+        },
+        "hint": {
+          "en": "Set power setting for forced charge",
+          "nl": "Vermogen instelling voor gedwongen laden instellen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "set_force_discharge_power",
+        "deprecated": true,
+        "title": {
+          "en": "Set force discharge power",
+          "nl": "Gedwongen ontlaad vermogen instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force discharge power to [[power]] W",
+          "nl": "Gedwongen ontlaad vermogen instellen op [[power]] W"
+        },
+        "hint": {
+          "en": "Set power setting for forced discharge",
+          "nl": "Vermogen instelling voor gedwongen ontladen instellen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "power",
+            "type": "range",
+            "title": {
+              "en": "Power (W)",
+              "nl": "Vermogen (W)"
+            },
+            "min": 0,
+            "max": 2500,
+            "step": 5
+          }
+        ]
+      },
+      {
+        "id": "set_force_charge_target",
+        "title": {
+          "en": "Set force SOC target",
+          "nl": "Gedwongen SOC doel instellen"
+        },
+        "titleFormatted": {
+          "en": "Set force SOC target to [[target]]%",
+          "nl": "Gedwongen SOC doel instellen op [[target]]%"
+        },
+        "hint": {
+          "en": "Set target SOC setting for force (dis)charge",
+          "nl": "Doel SOC instelling voor gedwongen (ont)laden instellen"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "target",
+            "type": "range",
+            "title": {
+              "en": "SOC Target (%)",
+              "nl": "SOC Doel (%)"
+            },
+            "min": 11,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "id": "set_charging_cutoff_soc",
+        "title": {
+          "en": "Set charging cutoff SOC",
+          "nl": "Laad afkap SOC instellen"
+        },
+        "titleFormatted": {
+          "en": "Set charging cutoff SOC to [[percentage]]%",
+          "nl": "Laad afkap SOC instellen op [[percentage]]%"
+        },
+        "hint": {
+          "en": "Set the SOC level at which charging stops (40-100%)",
+          "nl": "Stel het SOC niveau in waarbij laden stopt (40-100%)"
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 40,
+            "max": 100,
+            "step": 1
+          }
+        ]
+      },
+      {
+        "id": "set_discharging_cutoff_soc",
+        "title": {
+          "en": "Set discharging cutoff SOC (reserve)",
+          "nl": "Ontlaad afkap SOC (reserve) instellen"
+        },
+        "titleFormatted": {
+          "en": "Set discharging cutoff SOC to [[percentage]]%",
+          "nl": "Ontlaad afkap SOC instellen op [[percentage]]%"
+        },
+        "hint": {
+          "en": "Set the SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+          "nl": "Stel het SOC reserve niveau in waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+        },
+        "args": [
+          {
+            "type": "device",
+            "name": "device",
+            "filter": "driver_id=venus"
+          },
+          {
+            "name": "percentage",
+            "type": "range",
+            "title": {
+              "en": "Percentage (%)",
+              "nl": "Percentage (%)"
+            },
+            "min": 12,
+            "max": 30,
+            "step": 1
+          }
+        ]
       }
     ]
   },
@@ -1978,42 +2178,6 @@
               "value": 3,
               "min": 1,
               "max": 10
-            },
-            {
-              "id": "show_alarms",
-              "type": "dropdown",
-              "label": {
-                "en": "Show fault alarms",
-                "nl": "Toon fouten"
-              },
-              "hint": {
-                "en": "Fault registers on some Marstek firmware versions (notably V3 on firmware 149) return spurious bits that trigger false alarms while the battery works fine. 'Automatic' turns fault warnings off for V3 devices and on for V1/V2 devices. Override if you know your firmware reports alarms correctly.",
-                "nl": "Foutregisters op sommige Marstek firmware versies (met name V3 op firmware 149) sturen spurious bits die valse alarmen triggeren terwijl de batterij prima werkt. 'Automatisch' zet foutwaarschuwingen uit voor V3 apparaten en aan voor V1/V2 apparaten. Overrule als je weet dat jouw firmware correct fouten meldt."
-              },
-              "value": "auto",
-              "values": [
-                {
-                  "id": "auto",
-                  "label": {
-                    "en": "Automatic (V3 off, V1/V2 on)",
-                    "nl": "Automatisch (V3 uit, V1/V2 aan)"
-                  }
-                },
-                {
-                  "id": "always",
-                  "label": {
-                    "en": "Always show",
-                    "nl": "Altijd tonen"
-                  }
-                },
-                {
-                  "id": "never",
-                  "label": {
-                    "en": "Never show",
-                    "nl": "Nooit tonen"
-                  }
-                }
-              ]
             }
           ]
         },
@@ -2135,31 +2299,21 @@
       ],
       "capabilities": [
         "onoff",
-        "measure_voltage",
-        "measure_current",
-        "measure_power",
-        "measure_voltage.battery",
+        "measure_battery",
         "meter_power.capacity",
+        "measure_power",
+        "measure_power.battery",
         "measure_power.imported",
         "measure_power.exported",
         "meter_power.imported",
         "meter_power.exported",
-        "measure_temperature",
-        "measure_temperature.mos1",
-        "measure_temperature.mos2",
-        "battery_charging_state",
-        "force_charge_mode",
-        "operation_mode",
-        "user_work_mode",
-        "force_charge_target",
-        "measure_battery",
-        "force_discharge_power",
-        "force_charge_power",
-        "backup_mode",
-        "max_charge_power_limit",
-        "max_discharge_power_limit",
-        "target_power",
-        "target_power_mode"
+        "measure_power.pv",
+        "measure_voltage.pv",
+        "measure_current.pv",
+        "meter_power.pv",
+        "measure_voltage",
+        "measure_current",
+        "measure_temperature"
       ],
       "capabilitiesOptions": {
         "onoff": {
@@ -2176,28 +2330,28 @@
             "nl": "Batterij idle (uit)"
           }
         },
-        "measure_voltage": {
+        "measure_battery": {
           "title": {
-            "en": "Grid output Voltage",
-            "nl": "Netuitvoer voltage"
+            "en": "State of Charge",
+            "nl": "Laadtoestand"
           }
         },
-        "measure_voltage.battery": {
+        "meter_power.capacity": {
           "title": {
-            "en": "Battery Voltage",
-            "nl": "Batterij voltage"
-          }
-        },
-        "measure_current": {
-          "title": {
-            "en": "Grid output Current",
-            "nl": "Netuitvoer stroom"
+            "en": "Stored energy available",
+            "nl": "Opgeslagen energie beschikbaar"
           }
         },
         "measure_power": {
           "title": {
             "en": "Grid output Power",
             "nl": "Netuitvoer vermogen"
+          }
+        },
+        "measure_power.battery": {
+          "title": {
+            "en": "Battery Power",
+            "nl": "Batterij vermogen"
           }
         },
         "measure_power.imported": {
@@ -2224,10 +2378,40 @@
             "nl": "Ontladen energie"
           }
         },
-        "meter_power.capacity": {
+        "measure_power.pv": {
           "title": {
-            "en": "Stored energy available",
-            "nl": "Opgeslagen energie beschikbaar"
+            "en": "Solar Power",
+            "nl": "PV vermogen"
+          }
+        },
+        "measure_voltage.pv": {
+          "title": {
+            "en": "Solar Voltage",
+            "nl": "PV voltage"
+          }
+        },
+        "measure_current.pv": {
+          "title": {
+            "en": "Solar Current",
+            "nl": "PV stroom"
+          }
+        },
+        "meter_power.pv": {
+          "title": {
+            "en": "Solar Energy Generated",
+            "nl": "PV opgewekt"
+          }
+        },
+        "measure_voltage": {
+          "title": {
+            "en": "Grid output Voltage",
+            "nl": "Netuitvoer voltage"
+          }
+        },
+        "measure_current": {
+          "title": {
+            "en": "Grid output Current",
+            "nl": "Netuitvoer stroom"
           }
         },
         "measure_temperature": {
@@ -2235,64 +2419,6 @@
             "en": "Internal temperature",
             "nl": "Interne temperatuur"
           }
-        },
-        "measure_temperature.mos1": {
-          "title": {
-            "en": "MOSFET 1 temperature",
-            "nl": "MOSFET 1 temperatuur"
-          }
-        },
-        "measure_temperature.mos2": {
-          "title": {
-            "en": "MOSFET 2 temperature",
-            "nl": "MOSFET 2 temperatuur"
-          }
-        },
-        "target_power": {
-          "min": -2500,
-          "max": 2500,
-          "step": 5
-        },
-        "force_charge_power": {
-          "uiComponent": null
-        },
-        "force_discharge_power": {
-          "uiComponent": null
-        },
-        "user_work_mode": {
-          "uiComponent": null
-        },
-        "target_power_mode": {
-          "values": [
-            {
-              "id": "homey",
-              "title": {
-                "en": "Homey (force control)",
-                "nl": "Homey (geforceerd)"
-              }
-            },
-            {
-              "id": "anti_feed",
-              "title": {
-                "en": "Self consumption",
-                "nl": "Zelfconsumptie"
-              }
-            },
-            {
-              "id": "trade_mode",
-              "title": {
-                "en": "AI Optimization",
-                "nl": "AI Optimalisatie"
-              }
-            },
-            {
-              "id": "manual",
-              "title": {
-                "en": "Manual",
-                "nl": "Handmatig"
-              }
-            }
-          ]
         }
       },
       "settings": [
@@ -2342,21 +2468,6 @@
               "value": 5000,
               "min": 2000,
               "max": 60000
-            },
-            {
-              "id": "force_mode_delay",
-              "type": "number",
-              "label": {
-                "en": "Force Mode Delay (ms)",
-                "nl": "Gedwongen Modus Vertraging (ms)"
-              },
-              "hint": {
-                "en": "Delay before confirming force mode change to allow battery to accept new state",
-                "nl": "Vertraging voordat gedwongen modus wijziging wordt bevestigd, zodat batterij nieuwe status kan accepteren"
-              },
-              "value": 1000,
-              "min": 0,
-              "max": 10000
             },
             {
               "id": "connection_timeout",
@@ -2421,47 +2532,6 @@
                 "en": "Firmware"
               },
               "value": "xxx"
-            }
-          ]
-        },
-        {
-          "type": "group",
-          "label": {
-            "en": "Battery Protection Settings",
-            "nl": "Batterij Bescherming Instellingen"
-          },
-          "children": [
-            {
-              "id": "charging_cutoff_soc",
-              "type": "number",
-              "label": {
-                "en": "Charging Cutoff SOC (%)",
-                "nl": "Laad Afkap SOC (%)"
-              },
-              "hint": {
-                "en": "SOC level at which charging stops. Recommended range: 40-100%",
-                "nl": "SOC niveau waarbij laden stopt. Aanbevolen bereik: 40-100%"
-              },
-              "value": 100,
-              "min": 0,
-              "max": 100,
-              "units": "%"
-            },
-            {
-              "id": "discharging_cutoff_soc",
-              "type": "number",
-              "label": {
-                "en": "Discharging Cutoff SOC (%)",
-                "nl": "Ontlaad Afkap SOC (%)"
-              },
-              "hint": {
-                "en": "SOC reserve level below which discharging stops. Recommended range: 12-30%. WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
-                "nl": "SOC reserve niveau waaronder ontladen stopt. Aanbevolen bereik: 12-30%. WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
-              },
-              "value": 15,
-              "min": 0,
-              "max": 100,
-              "units": "%"
             }
           ]
         }

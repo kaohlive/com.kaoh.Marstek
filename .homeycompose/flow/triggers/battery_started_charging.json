@@ -1,9 +1,0 @@
-{
-  "id": "battery_started_charging",
-  "title": {
-    "en": "Battery started charging",
-    "nl": "Batterij is gaan laden"
-  },
-  "args": [],
-  "filter": "driver_id=venus|driver_id=venusd"
-}
