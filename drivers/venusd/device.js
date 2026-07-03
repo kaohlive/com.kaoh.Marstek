@@ -518,7 +518,7 @@ class VenusDDevice extends Homey.Device {
       } else if (previousMode !== modeStr) {
         this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
         if (previousMode) {
-          this.homey.flow.getDeviceTriggerCard('operation_mode_changed')
+          this.homey.flow.getDeviceTriggerCard('venusd_operation_mode_changed')
             .trigger(this, { mode: modeStr, prevMode: previousMode })
             .catch(this.error);
         }
@@ -660,15 +660,15 @@ class VenusDDevice extends Homey.Device {
     const previousStatus = this.getCapabilityValue('battery_charging_state');
     if (previousStatus !== chargingStatus) {
       this.setCapabilityValue('battery_charging_state', chargingStatus).catch(this.error);
-      this.homey.flow.getDeviceTriggerCard('charging_status_changed')
+      this.homey.flow.getDeviceTriggerCard('venusd_charging_status_changed')
         .trigger(this, { status: chargingStatus }, { status: chargingStatus })
         .catch(this.error);
       if (chargingStatus === 'charging') {
-        this.homey.flow.getDeviceTriggerCard('battery_started_charging')
+        this.homey.flow.getDeviceTriggerCard('venusd_battery_started_charging')
           .trigger(this, {}, {})
           .catch(this.error);
       } else if (chargingStatus === 'discharging') {
-        this.homey.flow.getDeviceTriggerCard('battery_started_discharging')
+        this.homey.flow.getDeviceTriggerCard('venusd_battery_started_discharging')
           .trigger(this, {}, {})
           .catch(this.error);
       }
@@ -681,11 +681,11 @@ class VenusDDevice extends Homey.Device {
       const thresholds = [10, 20, 50, 80, 90];
       thresholds.forEach(threshold => {
         if (previousSOC > threshold && soc <= threshold) {
-          this.homey.flow.getDeviceTriggerCard('soc_below_threshold')
+          this.homey.flow.getDeviceTriggerCard('venusd_soc_below_threshold')
             .trigger(this, { threshold }, { threshold })
             .catch(this.error);
         } else if (previousSOC < threshold && soc >= threshold) {
-          this.homey.flow.getDeviceTriggerCard('soc_above_threshold')
+          this.homey.flow.getDeviceTriggerCard('venusd_soc_above_threshold')
             .trigger(this, { threshold }, { threshold })
             .catch(this.error);
         }
@@ -700,12 +700,12 @@ class VenusDDevice extends Homey.Device {
       const highTemp = 50;
       const lowTemp = -10;
       if (previousTemp < highTemp && temperature >= highTemp) {
-        this.homey.flow.getDeviceTriggerCard('temperature_too_high')
+        this.homey.flow.getDeviceTriggerCard('venusd_temperature_too_high')
           .trigger(this, { temperature }, {})
           .catch(this.error);
       }
       if (previousTemp > lowTemp && temperature <= lowTemp) {
-        this.homey.flow.getDeviceTriggerCard('temperature_too_low')
+        this.homey.flow.getDeviceTriggerCard('venusd_temperature_too_low')
           .trigger(this, { temperature }, {})
           .catch(this.error);
       }
@@ -1182,13 +1182,13 @@ class VenusDDevice extends Homey.Device {
   }
 
   registerFlowCardTriggers() {
-    this.forceChargeModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_charge_mode_changed');
-    this.operationModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('operation_mode_changed');
-    this.userWorkModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('user_work_mode_changed');
-    this.forceChargePowerChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_charge_power_changed');
-    this.forceDischargePowerChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_discharge_power_changed');
-    this.forceChargeTargetChangedTrigger = this.homey.flow.getDeviceTriggerCard('force_charge_target_changed');
-    this.backupModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('backup_mode_changed');
+    this.forceChargeModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_force_charge_mode_changed');
+    this.operationModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_operation_mode_changed');
+    this.userWorkModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_user_work_mode_changed');
+    this.forceChargePowerChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_force_charge_power_changed');
+    this.forceDischargePowerChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_force_discharge_power_changed');
+    this.forceChargeTargetChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_force_charge_target_changed');
+    this.backupModeChangedTrigger = this.homey.flow.getDeviceTriggerCard('venusd_backup_mode_changed');
     this.log('Flow card triggers registered');
   }
 

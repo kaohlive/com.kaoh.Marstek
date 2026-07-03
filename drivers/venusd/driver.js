@@ -42,58 +42,58 @@ class VenusDDriver extends Homey.Driver {
   }
 
   registerFlowCardConditions() {
-    this.homey.flow.getConditionCard('is_charging')
+    this.homey.flow.getConditionCard('venusd_is_charging')
       .registerRunListener(async (args) => args.device.conditionIsCharging());
-    this.homey.flow.getConditionCard('is_discharging')
+    this.homey.flow.getConditionCard('venusd_is_discharging')
       .registerRunListener(async (args) => args.device.conditionIsDischarging());
-    this.homey.flow.getConditionCard('soc_above')
+    this.homey.flow.getConditionCard('venusd_soc_above')
       .registerRunListener(async (args) => args.device.conditionSOCAbove(args));
-    this.homey.flow.getConditionCard('soc_below')
+    this.homey.flow.getConditionCard('venusd_soc_below')
       .registerRunListener(async (args) => args.device.conditionSOCBelow(args));
-    this.homey.flow.getConditionCard('operation_mode_is')
+    this.homey.flow.getConditionCard('venusd_operation_mode_is')
       .registerRunListener(async (args) => args.device.conditionOperationModeIs(args));
-    this.homey.flow.getConditionCard('temperature_above')
+    this.homey.flow.getConditionCard('venusd_temperature_above')
       .registerRunListener(async (args) => args.device.conditionTemperatureAbove(args));
-    this.homey.flow.getConditionCard('backup_mode_is')
+    this.homey.flow.getConditionCard('venusd_backup_mode_is')
       .registerRunListener(async (args) => args.device.conditionBackupModeIs(args));
-    this.homey.flow.getConditionCard('force_charge_mode_is')
+    this.homey.flow.getConditionCard('venusd_force_charge_mode_is')
       .registerRunListener(async (args) => args.device.conditionForceChargeModeIs(args));
-    this.homey.flow.getConditionCard('user_work_mode_is')
+    this.homey.flow.getConditionCard('venusd_user_work_mode_is')
       .registerRunListener(async (args) => args.device.conditionUserWorkModeIs(args));
-    this.homey.flow.getConditionCard('force_charge_power_greater_than')
+    this.homey.flow.getConditionCard('venusd_force_charge_power_greater_than')
       .registerRunListener(async (args) => args.device.conditionForceChargePowerGreaterThan(args));
-    this.homey.flow.getConditionCard('force_discharge_power_greater_than')
+    this.homey.flow.getConditionCard('venusd_force_discharge_power_greater_than')
       .registerRunListener(async (args) => args.device.conditionForceDischargePowerGreaterThan(args));
-    this.homey.flow.getConditionCard('force_charge_target_greater_than')
+    this.homey.flow.getConditionCard('venusd_force_charge_target_greater_than')
       .registerRunListener(async (args) => args.device.conditionForceChargeTargetGreaterThan(args));
-    this.homey.flow.getConditionCard('max_charge_power_limit_below')
+    this.homey.flow.getConditionCard('venusd_max_charge_power_limit_below')
       .registerRunListener(async (args) => args.device.conditionMaxChargePowerLimitBelow(args));
-    this.homey.flow.getConditionCard('max_discharge_power_limit_below')
+    this.homey.flow.getConditionCard('venusd_max_discharge_power_limit_below')
       .registerRunListener(async (args) => args.device.conditionMaxDischargePowerLimitBelow(args));
-    this.homey.flow.getConditionCard('charging_cutoff_soc_above')
+    this.homey.flow.getConditionCard('venusd_charging_cutoff_soc_above')
       .registerRunListener(async (args) => args.device.conditionChargingCutoffSocAbove(args));
-    this.homey.flow.getConditionCard('discharging_cutoff_soc_above')
+    this.homey.flow.getConditionCard('venusd_discharging_cutoff_soc_above')
       .registerRunListener(async (args) => args.device.conditionDischargingCutoffSocAbove(args));
   }
 
   registerFlowCardActions() {
-    this.homey.flow.getActionCard('set_charge_mode')
+    this.homey.flow.getActionCard('venusd_set_charge_mode')
       .registerRunListener(async (args) => args.device.actionSetChargeMode(args));
-    this.homey.flow.getActionCard('set_backup_mode')
+    this.homey.flow.getActionCard('venusd_set_backup_mode')
       .registerRunListener(async (args) => args.device.actionSetBackupMode(args));
-    this.homey.flow.getActionCard('set_force_charge_mode')
+    this.homey.flow.getActionCard('venusd_set_force_charge_mode')
       .registerRunListener(async (args) => args.device.actionSetForceChargeMode(args));
-    this.homey.flow.getActionCard('set_user_work_mode')
+    this.homey.flow.getActionCard('venusd_set_user_work_mode')
       .registerRunListener(async (args) => args.device.actionSetUserWorkMode(args));
-    this.homey.flow.getActionCard('set_force_charge_power')
+    this.homey.flow.getActionCard('venusd_set_force_charge_power')
       .registerRunListener(async (args) => args.device.actionSetForceChargePower(args));
-    this.homey.flow.getActionCard('set_force_discharge_power')
+    this.homey.flow.getActionCard('venusd_set_force_discharge_power')
       .registerRunListener(async (args) => args.device.actionSetForceDischargePower(args));
-    this.homey.flow.getActionCard('set_force_charge_target')
+    this.homey.flow.getActionCard('venusd_set_force_charge_target')
       .registerRunListener(async (args) => args.device.actionSetForceChargeTarget(args));
-    this.homey.flow.getActionCard('set_charging_cutoff_soc')
+    this.homey.flow.getActionCard('venusd_set_charging_cutoff_soc')
       .registerRunListener(async (args) => args.device.actionSetChargingCutoffSoc(args));
-    this.homey.flow.getActionCard('set_discharging_cutoff_soc')
+    this.homey.flow.getActionCard('venusd_set_discharging_cutoff_soc')
       .registerRunListener(async (args) => args.device.actionSetDischargingCutoffSoc(args));
   }
 

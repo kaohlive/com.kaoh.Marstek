@@ -1,7 +1,7 @@
 {
   "triggers": [
     {
-      "id": "charging_status_changed",
+      "id": "venusd_charging_status_changed",
       "title": {
         "en": "Charging status changed",
         "nl": "Laadstatus gewijzigd"
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "id": "battery_started_charging",
+      "id": "venusd_battery_started_charging",
       "title": {
         "en": "Battery started charging",
         "nl": "Batterij is gaan laden"
@@ -31,7 +31,7 @@
       "args": []
     },
     {
-      "id": "battery_started_discharging",
+      "id": "venusd_battery_started_discharging",
       "title": {
         "en": "Battery started discharging",
         "nl": "Batterij is gaan ontladen"
@@ -43,7 +43,7 @@
       "args": []
     },
     {
-      "id": "soc_below_threshold",
+      "id": "venusd_soc_below_threshold",
       "title": {
         "en": "Battery level dropped below threshold",
         "nl": "Batterijniveau onder drempel"
@@ -65,7 +65,7 @@
       ]
     },
     {
-      "id": "soc_above_threshold",
+      "id": "venusd_soc_above_threshold",
       "title": {
         "en": "Battery level rose above threshold",
         "nl": "Batterijniveau boven drempel"
@@ -87,7 +87,7 @@
       ]
     },
     {
-      "id": "temperature_too_high",
+      "id": "venusd_temperature_too_high",
       "title": {
         "en": "Battery temperature too high",
         "nl": "Batterijtemperatuur te hoog"
@@ -109,7 +109,7 @@
       ]
     },
     {
-      "id": "temperature_too_low",
+      "id": "venusd_temperature_too_low",
       "title": {
         "en": "Battery temperature too low",
         "nl": "Batterijtemperatuur te laag"
@@ -131,7 +131,7 @@
       ]
     },
     {
-      "id": "backup_mode_changed",
+      "id": "venusd_backup_mode_changed",
       "title": {
         "en": "Battery backup mode changed",
         "nl": "Batterij backup modus is veranderd"
@@ -182,7 +182,7 @@
       ]
     },
     {
-      "id": "force_charge_mode_changed",
+      "id": "venusd_force_charge_mode_changed",
       "title": {
         "en": "Force charge mode changed",
         "nl": "Gedwongen laadmodus is veranderd"
@@ -254,7 +254,7 @@
       ]
     },
     {
-      "id": "operation_mode_changed",
+      "id": "venusd_operation_mode_changed",
       "title": {
         "en": "Operation mode changed",
         "nl": "Bedrijfsmodus is veranderd"
@@ -341,7 +341,7 @@
       ]
     },
     {
-      "id": "user_work_mode_changed",
+      "id": "venusd_user_work_mode_changed",
       "deprecated": true,
       "title": {
         "en": "Work mode changed",
@@ -407,7 +407,7 @@
       ]
     },
     {
-      "id": "force_charge_power_changed",
+      "id": "venusd_force_charge_power_changed",
       "title": {
         "en": "Force charge power changed",
         "nl": "Gedwongen laad vermogen is veranderd"
@@ -445,7 +445,7 @@
       ]
     },
     {
-      "id": "force_discharge_power_changed",
+      "id": "venusd_force_discharge_power_changed",
       "title": {
         "en": "Force discharge power changed",
         "nl": "Gedwongen ontlaad vermogen is veranderd"
@@ -483,7 +483,7 @@
       ]
     },
     {
-      "id": "force_charge_target_changed",
+      "id": "venusd_force_charge_target_changed",
       "title": {
         "en": "Force SOC target changed",
         "nl": "Gedwongen SOC doel is veranderd"
@@ -523,7 +523,7 @@
   ],
   "conditions": [
     {
-      "id": "backup_mode_is",
+      "id": "venusd_backup_mode_is",
       "title": {
         "en": "Battery backup mode is",
         "nl": "Batterij backup modus is"
@@ -564,7 +564,7 @@
       ]
     },
     {
-      "id": "force_charge_mode_is",
+      "id": "venusd_force_charge_mode_is",
       "title": {
         "en": "Force charge mode is",
         "nl": "Gedwongen laadmodus is"
@@ -626,7 +626,7 @@
       ]
     },
     {
-      "id": "operation_mode_is",
+      "id": "venusd_operation_mode_is",
       "title": {
         "en": "Operation mode is",
         "nl": "Bedrijfsmodus is"
@@ -695,7 +695,7 @@
       ]
     },
     {
-      "id": "user_work_mode_is",
+      "id": "venusd_user_work_mode_is",
       "deprecated": true,
       "title": {
         "en": "Work mode is",
@@ -751,7 +751,7 @@
       ]
     },
     {
-      "id": "force_charge_power_greater_than",
+      "id": "venusd_force_charge_power_greater_than",
       "title": {
         "en": "Force charge power is greater than",
         "nl": "Gedwongen laad vermogen is groter dan"
@@ -779,7 +779,7 @@
       ]
     },
     {
-      "id": "force_discharge_power_greater_than",
+      "id": "venusd_force_discharge_power_greater_than",
       "title": {
         "en": "Force discharge power is greater than",
         "nl": "Gedwongen ontlaad vermogen is groter dan"
@@ -807,7 +807,7 @@
       ]
     },
     {
-      "id": "force_charge_target_greater_than",
+      "id": "venusd_force_charge_target_greater_than",
       "title": {
         "en": "Force SOC target is greater than",
         "nl": "Gedwongen SOC doel is groter dan"
@@ -835,7 +835,7 @@
       ]
     },
     {
-      "id": "is_charging",
+      "id": "venusd_is_charging",
       "title": {
         "en": "Battery is charging",
         "nl": "Batterij is aan het laden"
@@ -847,7 +847,7 @@
       "args": []
     },
     {
-      "id": "is_discharging",
+      "id": "venusd_is_discharging",
       "title": {
         "en": "Battery is discharging",
         "nl": "Batterij is aan het ontladen"
@@ -859,7 +859,7 @@
       "args": []
     },
     {
-      "id": "soc_above",
+      "id": "venusd_soc_above",
       "title": {
         "en": "Battery level is above",
         "nl": "Batterijniveau is boven"
@@ -883,7 +883,7 @@
       ]
     },
     {
-      "id": "soc_below",
+      "id": "venusd_soc_below",
       "title": {
         "en": "Battery level is below",
         "nl": "Batterijniveau is onder"
@@ -907,7 +907,7 @@
       ]
     },
     {
-      "id": "temperature_above",
+      "id": "venusd_temperature_above",
       "title": {
         "en": "Temperature is above",
         "nl": "Temperatuur is boven"
@@ -931,7 +931,7 @@
       ]
     },
     {
-      "id": "max_charge_power_limit_below",
+      "id": "venusd_max_charge_power_limit_below",
       "title": {
         "en": "Max charge power limit is below",
         "nl": "Max laad vermogen limiet is onder"
@@ -959,7 +959,7 @@
       ]
     },
     {
-      "id": "max_discharge_power_limit_below",
+      "id": "venusd_max_discharge_power_limit_below",
       "title": {
         "en": "Max discharge power limit is below",
         "nl": "Max ontlaad vermogen limiet is onder"
@@ -987,7 +987,7 @@
       ]
     },
     {
-      "id": "charging_cutoff_soc_above",
+      "id": "venusd_charging_cutoff_soc_above",
       "title": {
         "en": "Charging cutoff SOC is above",
         "nl": "Laad afkap SOC is boven"
@@ -1015,7 +1015,7 @@
       ]
     },
     {
-      "id": "discharging_cutoff_soc_above",
+      "id": "venusd_discharging_cutoff_soc_above",
       "title": {
         "en": "Discharging cutoff SOC is above",
         "nl": "Ontlaad afkap SOC is boven"
@@ -1046,7 +1046,7 @@
   "actions": [
     {
       "deprecated": true,
-      "id": "set_charge_mode",
+      "id": "venusd_set_charge_mode",
       "title": {
         "en": "Set charge mode",
         "nl": "Laadmodus instellen"
@@ -1087,7 +1087,7 @@
       ]
     },
     {
-      "id": "set_backup_mode",
+      "id": "venusd_set_backup_mode",
       "title": {
         "en": "Set battery backup mode",
         "nl": "Batterij backup modus instellen"
@@ -1128,7 +1128,7 @@
       ]
     },
     {
-      "id": "set_force_charge_mode",
+      "id": "venusd_set_force_charge_mode",
       "deprecated": true,
       "title": {
         "en": "Set force charge mode",
@@ -1191,7 +1191,7 @@
       ]
     },
     {
-      "id": "set_user_work_mode",
+      "id": "venusd_set_user_work_mode",
       "deprecated": true,
       "title": {
         "en": "Set work mode",
@@ -1247,7 +1247,7 @@
       ]
     },
     {
-      "id": "set_force_charge_power",
+      "id": "venusd_set_force_charge_power",
       "deprecated": true,
       "title": {
         "en": "Set force charge power",
@@ -1276,7 +1276,7 @@
       ]
     },
     {
-      "id": "set_force_discharge_power",
+      "id": "venusd_set_force_discharge_power",
       "deprecated": true,
       "title": {
         "en": "Set force discharge power",
@@ -1305,7 +1305,7 @@
       ]
     },
     {
-      "id": "set_force_charge_target",
+      "id": "venusd_set_force_charge_target",
       "title": {
         "en": "Set force SOC target",
         "nl": "Gedwongen SOC doel instellen"
@@ -1333,7 +1333,7 @@
       ]
     },
     {
-      "id": "set_charging_cutoff_soc",
+      "id": "venusd_set_charging_cutoff_soc",
       "title": {
         "en": "Set charging cutoff SOC",
         "nl": "Laad afkap SOC instellen"
@@ -1361,7 +1361,7 @@
       ]
     },
     {
-      "id": "set_discharging_cutoff_soc",
+      "id": "venusd_set_discharging_cutoff_soc",
       "title": {
         "en": "Set discharging cutoff SOC (reserve)",
         "nl": "Ontlaad afkap SOC (reserve) instellen"
