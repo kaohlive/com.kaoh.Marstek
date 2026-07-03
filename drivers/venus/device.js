@@ -38,15 +38,6 @@ class VenusBatteryDevice extends Homey.Device {
     this._modeEventSeq = 0;
     this._pendingWorkModeWrites = []; // tracks unmatched writes to compute ack-latency on poll
 
-    // Wire-failure tracking for the persistent-timeout warning. _timeoutStreakStartedAt
-    // is the wall-clock of the first pollData failure in the current streak (0 when
-    // healthy). When the streak exceeds PERSISTENT_TIMEOUT_WARN_MS we set a user-
-    // visible setWarning on the device tile explaining the most likely cause
-    // (slot contention or network issues). Users do not read logs, so this puts
-    // the hint where they will actually see it. Cleared on next successful poll.
-    this._timeoutStreakStartedAt = 0;
-    this._persistentTimeoutWarningShown = false;
-
     // Setup Modbus event handlers
     this.setupModbusHandlers();
 
@@ -150,7 +141,7 @@ class VenusBatteryDevice extends Homey.Device {
 
     // Restart polling if connection settings changed
     if (changedKeys.includes('ip') || changedKeys.includes('port') || changedKeys.includes('poll_interval')) {
-      await this.restartPolling();
+      this.restartPolling();
     }
 
     // Handle charging cutoff SOC change
@@ -229,11 +220,11 @@ async writeDeviceName(name, config) {
     }
   }
 
-  // Safe wrappers around the Homey Device API. After a device is deleted the
-  // SDK will reject these calls with "Device not found" - if the call was
-  // un-awaited (most of them are, fire-and-forget for capability sync) it ends
-  // as an unhandledRejection on the app process (visible in support logs and a
-  // long-term stability risk). After delete we go quiet to avoid noisy logs.
+  // Safe wrappers for Homey device APIs that we call fire-and-forget from
+  // poll paths. After the user deletes the device, these reject with
+  // "Device not found" and surface as unhandledRejection on the app
+  // process, cluttering support logs. Swallow after delete to keep noise
+  // down. Same pattern as the Venus D driver.
   _setSettingsSafe(settings) {
     return this.setSettings(settings).catch((err) => {
       if (!this._isDeleted) this.log('setSettings failed:', err.message);
@@ -248,37 +239,6 @@ async writeDeviceName(name, config) {
     return this.setAvailable().catch((err) => {
       if (!this._isDeleted) this.log('setAvailable failed:', err.message);
     });
-  }
-  _setWarningSafe(message) {
-    return this.setWarning(message).catch((err) => {
-      if (!this._isDeleted) this.log('setWarning failed:', err.message);
-    });
-  }
-  _unsetWarningSafe() {
-    return this.unsetWarning().catch((err) => {
-      if (!this._isDeleted) this.log('unsetWarning failed:', err.message);
-    });
-  }
-
-  // True for the error classes that mean "the wire is unhappy" - timeouts,
-  // socket resets, pre-flight 'Modbus not connected'. Used by the process*
-  // methods to decide whether to re-throw and abort the whole pollData cycle
-  // (one bad wire = no point trying the next 3 register batches and producing
-  // 3 more wire failures in a row). Non-wire errors (parse / scaling /
-  // capability validation) stay swallowed by the inner try/catch so one bad
-  // register does not kill the whole poll.
-  _isWireError(err) {
-    if (!err) return false;
-    const name = err.name || '';
-    const code = err.code || '';
-    const msg = err.message || '';
-    return name === 'TransactionTimedOutError'
-      || code === 'ETIMEDOUT'
-      || code === 'ECONNRESET' || code === 'EPIPE'
-      || code === 'ECONNREFUSED'
-      || code === 'EHOSTUNREACH' || code === 'ENETUNREACH'
-      || msg === 'Modbus not connected'
-      || msg === 'Connection timeout';
   }
 
   setupModbusHandlers() {
@@ -303,39 +263,38 @@ async writeDeviceName(name, config) {
     if (this.modbus.isConnected()) {
       return true;
     }
-    // Cache the in-flight connect so two concurrent callers (e.g. pollData and
-    // a user write that both first call connectModbus()) share the same
-    // attempt instead of racing - the loser would orphan the Marstek's single
-    // TCP slot. ModbusClient.connect() does the same internally; this layer
-    // skips the round-trip when we know we're already trying.
-    if (this._connectPromise) return this._connectPromise;
-    this._connectPromise = (async () => {
-      try {
-        return await this.modbus.connect({
-          ip: this.settings.ip,
-          port: this.settings.port || 502
-        });
-      } catch (error) {
-        this.log('Modbus connection failed:', error);
-        return false;
-      }
-    })().finally(() => {
-      this._connectPromise = null;
-    });
-    return this._connectPromise;
+
+    try {
+      const success = await this.modbus.connect({
+        ip: this.settings.ip,
+        port: this.settings.port || 502
+      });
+
+      return success;
+    } catch (error) {
+      this.log('Modbus connection failed:', error);
+      return false;
+    }
+  }
+
+  disconnectModbus() {
+    if (this.modbus) {
+      this.modbus.disconnect();
+      this.log('Disconnected from Modbus device');
+    }
   }
 
   // ============================================
   // DIAGNOSTIC API HELPERS (called via app.js endpoints)
   // ============================================
   // These delegate diagnostic reads/writes through this device's own
-  // ModbusClient instance - which is already serialized by the mutex and
-  // lifecycle-protected by the in-flight connect promise. Earlier versions
-  // had a separate ModbusClient instance on app.js (testModbus) which
-  // opened a parallel TCP socket to the same device - on Marstek hardware
-  // with native Modbus TCP (one client slot only) this competed with the
-  // slow poll for the slot and showed up in field logs as alternating
-  // ECONNREFUSED + TransactionTimedOutError.
+  // ModbusClient instance. Earlier versions had a separate ModbusClient
+  // instance on app.js (testModbus) which opened a parallel TCP socket to
+  // the same device - on Marstek hardware with native Modbus TCP (one
+  // client slot only) this competed with the slow poll for the slot and
+  // showed up in field logs as alternating ECONNREFUSED +
+  // TransactionTimedOutError whenever a user opened the settings dump
+  // page while the poll was active.
 
   async apiReadRegister(address, count = 1) {
     if (!await this.connectModbus()) {
@@ -477,21 +436,14 @@ async writeDeviceName(name, config) {
     return { success: true, data };
   }
 
-  async disconnectModbus() {
-    if (this.modbus) {
-      await this.modbus.disconnect();
-      this.log('Disconnected from Modbus device');
-    }
-  }
-
   startPolling() {
     this.stopPolling();
-
+    
     const interval = this.settings.poll_interval || 5000;
     this.pollInterval = setInterval(async () => {
       await this.pollData();
     }, interval);
-
+    
     // Initial poll
     setTimeout(() => this.pollData(), 1000);
   }
@@ -503,9 +455,9 @@ async writeDeviceName(name, config) {
     }
   }
 
-  async restartPolling() {
+  restartPolling() {
     this.stopPolling();
-    await this.disconnectModbus();
+    this.disconnectModbus();
     this.startPolling();
   }
 
@@ -534,6 +486,21 @@ async writeDeviceName(name, config) {
       // Determine device version based on device name - more reliable than firmware version
       // V3 devices typically have names like "AC01", while V1/V2 have "limited", "BI_2.5_2.5", etc.
       const deviceNameLower = deviceName.toLowerCase().trim();
+
+      // Guard: Venus D (sometimes marketed as "Duravolt") uses a different
+      // Modbus register layout (30xxx / 34xxx / 37xxx ranges plus dedicated
+      // MPPT registers). About two of our register reads happen to overlap
+      // (31000 device name, 32105 capacity) which is exactly the partial-
+      // success pattern we saw on the Venus D tester ("first two values
+      // update then nothing"). Stop here and direct the user to re-pair
+      // with the Venus D driver instead of letting them fight unexplained
+      // timeouts forever.
+      if (deviceNameLower.startsWith('vnsd') || deviceNameLower.startsWith('vnpd') || deviceNameLower.includes('duravolt')) {
+        this.log(`Detected Venus D ("${deviceName}") on the Venus E driver - this driver does not support that hardware.`);
+        this.setWarning('This is a Marstek Venus D (also sold as "Duravolt"), which uses a different Modbus register layout. Please remove this device and re-add it using the "Venus D" driver.').catch((err) => this.log('setWarning failed:', err.message));
+        this._setUnavailableSafe('Wrong driver - see warning above');
+        return;
+      }
 
       // V3 device detection patterns
       if (deviceNameLower.startsWith('ac')) {
@@ -623,15 +590,6 @@ async writeDeviceName(name, config) {
       if (!this._isDeleted && !this.getAvailable()) {
         this._setAvailableSafe();
       }
-      // Healthy poll - close any open timeout streak and remove the persistent-
-      // timeout warning if we'd previously raised it.
-      if (this._timeoutStreakStartedAt !== 0) {
-        this._timeoutStreakStartedAt = 0;
-      }
-      if (this._persistentTimeoutWarningShown) {
-        this._persistentTimeoutWarningShown = false;
-        this._unsetWarningSafe();
-      }
 
     } catch (error) {
       this.consecutiveErrors++;
@@ -640,23 +598,6 @@ async writeDeviceName(name, config) {
       // Only mark unavailable after multiple consecutive failures
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this._setUnavailableSafe(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
-      }
-
-      // Persistent-timeout warning. When wire failures keep happening for >5
-      // minutes across pollData cycles, surface a setWarning on the device
-      // tile pointing at the most likely external cause (slot contention or
-      // network/cabling). Users do not read logs - this puts the hint on the
-      // device tile in the Homey UI. Cleared the moment a poll succeeds again.
-      if (this._isWireError(error)) {
-        const PERSISTENT_TIMEOUT_WARN_MS = 5 * 60 * 1000;
-        if (this._timeoutStreakStartedAt === 0) {
-          this._timeoutStreakStartedAt = Date.now();
-        } else if (!this._persistentTimeoutWarningShown
-            && Date.now() - this._timeoutStreakStartedAt >= PERSISTENT_TIMEOUT_WARN_MS
-            && !this._isDeleted) {
-          this._persistentTimeoutWarningShown = true;
-          this._setWarningSafe('Frequent Modbus timeouts. If your battery has built-in Modbus TCP (e.g. Marstek V3), only one client can connect at a time - check that no other app (Marstek mobile app, Home Assistant, MQTT bridge, etc.) is connected. Network/cabling issues can also cause this.');
-        }
       }
     }
   }
@@ -726,10 +667,6 @@ async writeDeviceName(name, config) {
 
     } catch (error) {
       this.log('Error processing battery state:', error);
-      // Re-throw wire errors so pollData aborts the cycle instead of plowing
-      // through the next process* calls that will all time out and each count
-      // as a separate wire failure.
-      if (this._isWireError(error)) throw error;
     }
   }
 
@@ -754,8 +691,7 @@ async writeDeviceName(name, config) {
         await this.processAlarmCodes(slaveId);
       }
     } catch (error) {
-      this.log('Error processing battery health:', error);
-      if (this._isWireError(error)) throw error;
+      this.log('Error processing battery state:', error);
     }
   }
 
@@ -781,8 +717,13 @@ async writeDeviceName(name, config) {
       // Trigger operation mode change event
       const previousMode = this.getCapabilityValue('operation_mode');
       this.log('Previous mode: '+previousMode+' - New mode: '+modeStr);
-      // Only set capability if value changed to prevent unnecessary triggers
-      if (previousMode !== modeStr) {
+      // Guard: some firmware versions return inverter_state values outside
+      // our known map (e.g. transient values, undocumented states). Skip
+      // the capability write rather than crash with "Expected string, got
+      // undefined".
+      if (modeStr === undefined) {
+        this.log(`Unknown inverter state ${inverter_state} - not updating operation_mode`);
+      } else if (previousMode !== modeStr) {
         this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
 
         // Trigger operation mode change event only after value is set and if there was a previous value
@@ -808,7 +749,13 @@ async writeDeviceName(name, config) {
       if (currentForceMode === 'target_power' && (forceModeStr === 'force_charge' || forceModeStr === 'force_discharge')) {
         displayForceMode = 'target_power';
       }
-      if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
+      // Guard: skip write if force_mode is outside our known map (same
+      // firmware-return-out-of-range issue as operation_mode above).
+      // displayForceMode is kept in scope for downstream use (e.g.
+      // forceSocActive derivation).
+      if (forceModeStr === undefined) {
+        this.log(`Unknown force mode ${force_mode} - not updating force_charge_mode`);
+      } else if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
         // Don't overwrite - force_soc is active via SOC target register
       } else if (currentForceMode !== displayForceMode) {
         this.setCapabilityValue('force_charge_mode', displayForceMode).catch(this.error);
@@ -874,10 +821,15 @@ async writeDeviceName(name, config) {
         this._pendingWorkModeWrites = stillPending;
       }
 
-      // Only set capability if value changed to prevent unnecessary triggers
-      const currentWorkMode = this.getCapabilityValue('user_work_mode');
-      if (currentWorkMode !== workModeStr) {
-        this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+      // Only set capability if value changed to prevent unnecessary triggers.
+      // Guard against out-of-range work_mode values from firmware.
+      if (workModeStr === undefined) {
+        this.log(`Unknown work mode ${work_mode} - not updating user_work_mode`);
+      } else {
+        const currentWorkMode = this.getCapabilityValue('user_work_mode');
+        if (currentWorkMode !== workModeStr) {
+          this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+        }
       }
       //Process charging status from operation mode
       this.processChargingStatus(modeStr);
@@ -988,25 +940,46 @@ async writeDeviceName(name, config) {
 
     } catch (error) {
       this.log('Error processing system data:', error);
-      if (this._isWireError(error)) throw error;
     }
   }
 
   async processAlarmCodes(slaveId) {
+    // Fault-register findings from a full tester dump across firmware
+    // v158.1 and v149 (see project memory + community forum thread):
+    //
+    //   Register  v158.1     v149       Notes
+    //   36000     0x0000     0x0000     System alarms (PLL, temp, fan, ...)
+    //   36100     0x0000     0x0000     Grid faults
+    //   36101     0x0000     0x0000     Battery faults
+    //   36102     0x0000     0x0000     Unknown (community sheet: reserved?)
+    //   36103     0x0000     0x0940     "Hardware faults" per PDF - BUT the
+    //                                    v149 value is a stable constant on
+    //                                    healthy batteries that our PDF-based
+    //                                    bit interpretation reads as three
+    //                                    simultaneous hardware alarms. Removed
+    //                                    from the read set in v1.5.6 because
+    //                                    the semantics of 36103 have shifted
+    //                                    in newer firmware and we cannot tell
+    //                                    real faults from firmware-internal
+    //                                    status bits.
+    //   36104     Illegal    Illegal    Absent on all tested firmware.
+    //
+    // 36000 / 36100 / 36101 stay in the read loop as real error registers.
+    // A snapshot showing 0x0000 does NOT mean they never fire; that is the
+    // whole point of an error register. If a real fault occurs on those
+    // registers, we want the alarm capability + flow triggers + setWarning
+    // to fire so the user knows about it.
     try {
       const alarms = [];
       const systemAlarms = [];
       const gridAlarms = [];
       const batteryAlarms = [];
-      const hardwareAlarms = [];
-      const systemFaultAlarms = [];
       let hasAlarm = false;
 
       // Default register values (assume no alarms if register doesn't exist)
       let alarm_code = 0;
       let grid_fault = 0;
       let battery_fault = 0;
-      let hardware_fault = 0;
 
       // Try to read alarm code (36000) - System alarms
       try {
@@ -1064,47 +1037,36 @@ async writeDeviceName(name, config) {
         this.log(`Battery fault register 36101 not available: ${error.message}`);
       }
 
-      // Try to read hardware fault word (36103) - Hardware faults
-      try {
-        const reg_hardware_fault = await this.modbus.readHoldingRegisters(slaveId, 36103, 1);
-        hardware_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_hardware_fault));
+      // Register 36103 (hardware fault) deliberately not read - see
+      // header comment. Register 36104 was already absent on all tested
+      // firmwares.
 
-        if (hardware_fault > 0) {
-          hasAlarm = true;
-          if (hardware_fault & 0x001) { alarms.push('Hardware Bus Overvoltage'); hardwareAlarms.push('Hardware Bus Overvoltage'); }
-          if (hardware_fault & 0x002) { alarms.push('Hardware Output Overcurrent'); hardwareAlarms.push('Hardware Output Overcurrent'); }
-          if (hardware_fault & 0x004) { alarms.push('Hardware Trans Overcurrent'); hardwareAlarms.push('Hardware Trans Overcurrent'); }
-          if (hardware_fault & 0x008) { alarms.push('Hardware Battery Overcurrent'); hardwareAlarms.push('Hardware Battery Overcurrent'); }
-          if (hardware_fault & 0x010) { alarms.push('Hardware Protection'); hardwareAlarms.push('Hardware Protection'); }
-          if (hardware_fault & 0x020) { alarms.push('Output Overcurrent'); hardwareAlarms.push('Output Overcurrent'); }
-          if (hardware_fault & 0x040) { alarms.push('High Voltage Bus Overvoltage'); hardwareAlarms.push('High Voltage Bus Overvoltage'); }
-          if (hardware_fault & 0x080) { alarms.push('High Voltage Bus Undervoltage'); hardwareAlarms.push('High Voltage Bus Undervoltage'); }
-          if (hardware_fault & 0x100) { alarms.push('Overpower Protection'); hardwareAlarms.push('Overpower Protection'); }
-          if (hardware_fault & 0x200) { alarms.push('FSM Abnormal'); hardwareAlarms.push('FSM Abnormal'); }
-          if (hardware_fault & 0x400) { alarms.push('Overtemperature Protection'); hardwareAlarms.push('Overtemperature Protection'); }
-          if (hardware_fault & 0x800) { alarms.push('Inverter Soft Start Timeout'); hardwareAlarms.push('Inverter Soft Start Timeout'); }
-        }
-      } catch (error) {
-        this.log(`Hardware fault register 36103 not available: ${error.message}`);
-      }
+      // Alarm reporting policy. Now that we removed the known source of
+      // v149 false positives (36103), the auto default no longer needs
+      // to gate off V3 devices. 'auto' now means always show; the setting
+      // stays as an escape hatch for anyone who hits new spurious behaviour
+      // on future firmware without waiting for a code fix.
+      const alarmPolicy = this.getSetting('show_alarms') || 'auto';
+      const showAlarms = alarmPolicy !== 'never';
 
-      // Register 36104 not available on this device - skipping system fault detection
-
-      // Update alarm capability and set warning if needed
+      const effectiveAlarm = showAlarms && hasAlarm;
       const currentAlarm = this.getCapabilityValue('alarm_generic');
-      if (currentAlarm !== hasAlarm) {
-        this.setCapabilityValue('alarm_generic', hasAlarm).catch(this.error);
+      if (currentAlarm !== effectiveAlarm) {
+        this.setCapabilityValue('alarm_generic', effectiveAlarm).catch(this.error);
       }
 
-      // Set warning with specific alarm details and trigger workflow cards
+      // Always log detected alarms for diagnostics
       if (hasAlarm && alarms.length > 0) {
+        const diagMessage = `Device alarms detected: ${alarms.join(', ')}`;
+        this.log(`Alarms detected: ${diagMessage}${showAlarms ? '' : ' (suppressed by show_alarms=never)'}`);
+      }
+
+      if (showAlarms && hasAlarm && alarms.length > 0) {
         const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
-        const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault},Hardware:${hardware_fault}`;
+        const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault}`;
 
         this.setWarning(alarmMessage);
-        this.log(`Alarms detected: ${alarmMessage}`);
 
-        // Trigger general battery fault detected event with tokens
         this.homey.flow.getDeviceTriggerCard('battery_fault_detected')
           .trigger(this,
             { message: alarmMessage, alarm_codes: alarmCodes },
@@ -1112,7 +1074,6 @@ async writeDeviceName(name, config) {
           )
           .catch(this.error);
 
-        // Trigger specific alarm type events with detailed messages for available registers
         if (gridAlarms.length > 0) {
           const gridMessage = gridAlarms.join(', ');
           this.homey.flow.getDeviceTriggerCard('grid_fault_detected')
@@ -1127,13 +1088,6 @@ async writeDeviceName(name, config) {
             .catch(this.error);
         }
 
-        if (hardwareAlarms.length > 0) {
-          const hardwareMessage = hardwareAlarms.join(', ');
-          this.homey.flow.getDeviceTriggerCard('hardware_fault_detected')
-            .trigger(this, { message: hardwareMessage }, {})
-            .catch(this.error);
-        }
-
         // Use generic battery warning for system alarms (since specific system fault register isn't available)
         if (systemAlarms.length > 0) {
           const warningMessage = systemAlarms.join(', ');
@@ -1144,8 +1098,10 @@ async writeDeviceName(name, config) {
             )
             .catch(this.error);
         }
-      } else if (!hasAlarm) {
-        // Clear warning when no alarms
+      } else {
+        // Clear stale warning: either policy suppresses (never) or the
+        // battery is currently fault-free. Also flushes leftover warnings
+        // from prior versions that fired unconditionally on 36103.
         this.unsetWarning();
       }
 
@@ -1781,7 +1737,7 @@ async writeDeviceName(name, config) {
     // Set flag immediately to prevent any pending poll operations
     this._isDeleted = true;
     this.stopPolling();
-    await this.disconnectModbus();
+    this.disconnectModbus();
   }
 
   // ============================================

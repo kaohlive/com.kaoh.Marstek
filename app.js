@@ -30,33 +30,37 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
     // accepts one client at a time; a second ModbusClient living on this app
     // would open a parallel TCP socket to the same device and compete with
     // the device's own poller for the single slot. All diagnostic endpoints
-    // below delegate through the matching device's existing ModbusClient,
-    // which is mutex-protected and lifecycle-clean.
+    // below delegate through the matching device's existing ModbusClient.
   }
 
   /**
-   * Get all Venus battery devices
-   * Used by the settings page to list available devices
+   * Get all Marstek battery devices across all drivers (venus + venusd).
+   * Used by the settings page to list available devices.
    */
   getVenusDevices() {
-    const driver = this.homey.drivers.getDriver('venus');
-    if (!driver) {
-      return [];
+    const driverIds = ['venus', 'venusd'];
+    const out = [];
+    for (const id of driverIds) {
+      const driver = this.homey.drivers.getDriver(id);
+      if (!driver) continue;
+      for (const device of driver.getDevices()) {
+        out.push({
+          id: device.getData().id,
+          name: device.getName(),
+          driver: id,
+          ip: device.getSetting('ip'),
+          port: device.getSetting('port'),
+          slaveId: device.getSetting('slave_id'),
+        });
+      }
     }
-
-    const devices = driver.getDevices();
-    return devices.map(device => ({
-      id: device.getData().id,
-      name: device.getName(),
-      ip: device.getSetting('ip'),
-      port: device.getSetting('port'),
-      slaveId: device.getSetting('slave_id')
-    }));
+    return out;
   }
 
   /**
    * Diagnostic: return the mode-events ringbuffer for a device.
-   * Used by the settings page to inspect write→stable-read latency.
+   * Only the venus driver implements this (write→stable-read latency tracking
+   * for force-mode writes); the venusd driver does not.
    */
   getModeEvents(deviceId) {
     const device = this.getVenusDeviceById(deviceId);
@@ -78,22 +82,24 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
-   * Get a Venus device by its ID
+   * Find a device by ID, searching both venus and venusd drivers.
+   * Name retained for backwards-compat with existing settings-page code.
    */
   getVenusDeviceById(deviceId) {
-    const driver = this.homey.drivers.getDriver('venus');
-    if (!driver) {
-      return null;
+    const driverIds = ['venus', 'venusd'];
+    for (const id of driverIds) {
+      const driver = this.homey.drivers.getDriver(id);
+      if (!driver) continue;
+      const device = driver.getDevices().find(d => d.getData().id === deviceId);
+      if (device) return device;
     }
-
-    const devices = driver.getDevices();
-    return devices.find(device => device.getData().id === deviceId);
+    return null;
   }
 
   /**
    * Read a Modbus register from a device. Delegates through the device's own
-   * (mutex-protected) ModbusClient so settings-page reads cannot collide with
-   * the slow poll on the single Marstek native-Modbus client slot.
+   * ModbusClient so settings-page reads cannot collide with the slow poll
+   * on the single Marstek native-Modbus client slot.
    */
   async readRegister(deviceId, address, count = 1) {
     const device = this.getVenusDeviceById(deviceId);
@@ -127,9 +133,7 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
 
   /**
    * Poll all known registers from a device for the settings-page "Device
-   * state dump" button. Delegates through the device's own ModbusClient so
-   * the poll cannot fight the device's own slow poll for the Marstek's
-   * single native-Modbus client slot.
+   * state dump" button. Delegates through the device's own ModbusClient.
    */
   async pollDeviceState(deviceId) {
     const device = this.getVenusDeviceById(deviceId);

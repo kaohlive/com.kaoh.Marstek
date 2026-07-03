@@ -1,4 +1,31 @@
 {
+  "1.5.6": {
+    "en": "Fault register cleanup based on full tester dumps across firmware v158.1 and v149. Register 36103 is no longer read on Venus E - v149 firmware holds a stable 0x0940 constant there that our PDF-based bit interpretation reads as three simultaneous hardware alarms on a battery that is working fine (Marstek changed the semantics of 36103 in newer firmware and we cannot map the current meaning). The four 'hardware fault' bit lines and the hardware_fault_detected flow trigger are removed accordingly. Registers 36000/36100/36101 remain the real error indicators and continue to drive alarm_generic + the general/grid/battery-system fault flow cards + the battery_warning card. show_alarms 'Automatic' now means show real faults for everyone; the V3-off behaviour was specific to 36103 false positives and is no longer needed. Venus D driver gains alarm processing for the first time (36000/36100/36101 only, alarm_generic capability added, has_fault condition + battery_fault_detected / battery_warning_detected / grid_fault_detected / battery_system_fault_detected triggers wired with venusd_ prefix). Register 36104 was absent on every firmware in the dump so it is not read anywhere."
+  },
+  "1.5.5": {
+    "en": "Ships the Venus D driver rewire from 1.5.4 in a build that passes 'homey app validate --level publish'. The 1.5.4 initial cut had duplicate flow card IDs between the Venus E and Venus D drivers, which failed publish validation. Fixed by prefixing every Venus D flow card ID with 'venusd_'. Venus E flow.compose is unchanged from the 1.5.3 baseline that testers are running, so existing Venus E flows keep working exactly as before. Consequence: Venus D users cannot reuse an existing Venus E flow for a Venus D device - they need to build parallel flows using the Venus D versions of the same cards. No Venus D driver functionality changes vs 1.5.4."
+  },
+  "1.5.4": {
+    "en": "Venus D driver rewired for Venus E parity. Previous Venus D releases only polled SOC and capacity - all other capabilities were empty tiles. The community-extended Duravolt v1.1 datasheet (scanned on firmware v153) confirmed the Venus D shares most of its 32xxx/33xxx/35xxx/4xxxx register range with Venus E, so this release ports the full poll loop: battery voltage, AC voltage/current/power, energy totals (charge/discharge), internal + MOS temperatures, inverter state, force-mode reads, work-mode + RS485 control gate, backup mode, force-charge target, force-charge/discharge power, max charge/discharge limits, cutoff SOC settings. Full write support is also included: onoff, target_power, target_power_mode, force_charge_mode, force_charge_target, backup mode, work mode, force charge/discharge power, cutoff SOCs. Flow cards (16 conditions, 9 actions, 14 triggers) mirror the Venus E set minus the four alarm/fault triggers. Deliberately NOT included: battery current + battery power reads (registers 32101/32102 return garbage on Venus D even on the working v147 firmware per tester chats), alarm/fault registers 36xxx (Venus D specific alarm bit meanings are unverified), PV/MPPT registers (not documented in the Modbus range - Marstek exposes solar data via the UDP local API only, users needing PV can combine this driver with the Marstek Local API Homey app), and firmware register 31101 (still known to trigger a deaf-after-error lockup on v149). Compose capabilities updated: added the full parity set, removed the four .pv placeholders plus battery current/power tiles that previously shipped as empty. onInit's repairCapabilities cleans up the obsolete capabilities on existing devices with no user action needed. The one known blocker remains firmware v149 broken Modbus TCP - this rewire makes the driver useful for Venus D users on newer firmware (v153+) when Marstek ships it."
+  },
+  "1.5.3": {
+    "en": "Venus E driver: (1) new 'Show fault alarms' setting with three modes - 'Automatic' (default), 'Always show', 'Never show'. Automatic turns fault-warnings off for V3 devices and on for V1/V2 devices. Multiple V3 testers on firmware v149 reported spurious hardware-fault bits ('Hardware Bus Overvoltage', 'Overpower Protection', 'Inverter Soft Start Timeout' etc.) firing continuously while the battery works fine physically - cross-checked against the community-scanned register map (v153+) shows our labels are firmware-dependent guesses and the v149 bits do not correspond to real faults. Alarm log lines still fire in all cases so diagnostic data is retained; only the user-visible setWarning and flow triggers are gated. V1/V2 devices continue to raise alarms as before. Users can override the setting per-device if they know their firmware reports alarms correctly. (2) Undefined-value guards on operation_mode / force_charge_mode / user_work_mode - some firmware versions return values outside our known enum maps (e.g. transient states during mode switches), which used to crash with 'Expected string, got undefined' on setCapabilityValue. Now logs the unknown value and skips the write instead."
+  },
+  "1.5.2": {
+    "en": "Venus D: SOC register moved from 34002 to 32104. The 34002 in 1.5.0 / 1.5.1 was sourced from a community HA project that turned out to predate Marstek's firmware register-alignment changes - on Venus D firmware v149 it just times out forever. 32104 is the address documented in the official Duravolt v1.1 Modbus PDF and in the community-extended datasheet scanned on firmware v153. Tester feedback confirmed the 32xxx register range works on this hardware. Scaling stays at 0.1% (raw / 10), so a raw read of 500 displays as 50% SOC. If 32104 also fails on some firmware, register 37005 is documented as an alias ('same as 32104') and is the Phase 1c fallback."
+  },
+  "1.5.1": {
+    "en": "Phase 1b for the Venus D driver, plus a cosmetic rename and one safety cleanup on the Venus E driver. (1) Venus D no longer reads register 31101 (firmware) on Venus D firmware v149 where it triggers a 'deaf after Modbus exception' lockup that kills every subsequent read in the session. Firmware in the device-info settings stays 'unknown' until we find a register that works on older firmware (v153+ does have 31101). (2) SOC at register 34002 is now correctly scaled by 0.1% (raw / 10) - tester data showed it was being read as raw percent, so 84% SOC displayed as clamped 100% and stored-energy showed 129 kWh instead of 12.9 kWh on a 15.36 kWh battery. (3) The 'Stored energy available' capability is no longer briefly overwritten with rated capacity during static-info load - only the poll loop writes it now, as actual stored energy (capacity x SOC). (4) Cosmetic: the old 'Venus Battery' driver is renamed to 'Venus E' to match Marstek's product naming alongside the Venus D driver added in 1.5.0. Existing paired devices keep working - only the type label in the UI changes. (5) Venus E driver now wraps fire-and-forget setSettings / setAvailable / setUnavailable calls so they no longer surface as unhandledRejection on the app process when the user deletes the device mid-poll. Pure log-noise reduction, no behavior change."
+  },
+  "1.5.0": {
+    "en": "Adds a dedicated 'Venus D' driver alongside the existing 'Venus Battery' driver. (The Venus D is sometimes marketed by resellers as 'Duravolt' - same hardware, same driver.) Venus D is a PV-hybrid battery from a different Marstek product family with its own Modbus register layout (30xxx/34xxx/37xxx ranges plus MPPT registers) that the Venus driver was never designed for - field tests showed Venus D devices on the Venus driver could read only the device-name and capacity registers, then time out on everything else. Phase 1 (this release) is read-only: device name, battery capacity, and SOC. Subsequent versions will add battery/AC measurements, PV/solar readings, and control writes one phase at a time with tester validation between steps. If you have a Venus D currently paired on the Venus driver: the Venus driver will now detect it and show a warning telling you to remove and re-pair using the Venus D driver."
+  },
+  "1.4.2": {
+    "en": "Minimal-improvements release built on the v1.3.4 baseline that testers confirmed still works. Adds only three low-risk changes on top: (1) every Modbus error log line is now prefixed with a category tag like [TCP/REFUSED], [TCP/RESET], [Modbus/PROTOCOL_TIMEOUT] so support can tell at a glance what kind of failure it is - log-only, no behaviour change. (2) The settings-page register read/write/dump endpoints now go through the device's own ModbusClient instead of opening a parallel TCP socket - fixes a self-collision on Marstek hardware with single-client native Modbus TCP. (3) A leftover duplicate processBatteryHealth call in the poll loop is removed, cutting 3 redundant reads per cycle. Deliberately NOT included from the 1.3.5-1.4.0 series: the per-instance Modbus mutex (caused regressions on some V3 firmware versions), the lifecycle-hygiene close-grace, the pollData abort-on-wire-failure, the safe Homey API wrappers, the keepalive/fast-check loops, and the connection profile system. If 1.4.2 works for testers who broke on 1.3.22/1.4.0, we know the issue was in one of those omitted features."
+  },
+  "1.4.0": {
+    "en": "Clean rebuild from the 1.3.4 baseline. The 1.3.5-1.3.19 series was a long chain of attempts to mask a Marstek V3 firmware-side behaviour (force-command countdown reverts) that turned out not to be an app-side problem at all. Those attempts (keepalive loops, fast-check recovery, force-reconnect on timeouts) destabilised the Modbus connection for many users that were previously stable. 1.4.0 drops all of that and keeps only the genuine wins that stand on their own: per-instance Modbus mutex to prevent overlapping reads/writes from corrupting framing, connection-lifecycle hygiene (in-flight connect promise caching + close grace) to prevent orphaned sockets on the V3's single-client TCP slot, diagnostic API routing through the device's own ModbusClient (no second competing client on app.js), error classifier in logs, safe Homey API wrappers to prevent unhandledRejection after device delete, pollData abort on first wire failure to cut bus load during recovery, persistent setWarning on the device tile after 5 minutes of sustained timeouts, reconnect ceiling raised from 10 to 30 attempts (~4h of trying before unavailable) for transient network blips, and a copy-paste duplicate read removed from pollData."
+  },
   "1.3.22": {
     "en": "Stability rollback: removes the aggressive force-reconnect-on-3-timeouts behaviour introduced in 1.3.19 that destabilised previously-stable setups. Also restores the bounded reconnect ceiling (30 attempts) so a truly dead device produces an unavailable state instead of an infinite reconnect storm. Kept from 1.3.19: error classifier in logs and the safe Homey API wrappers. Kept on top: pollData aborts after the first wire failure in a cycle (cuts bus load), and a setWarning appears on the device tile after 5 minutes of sustained Modbus timeouts pointing at slot contention or network issues."
   },
@@ -8,133 +35,130 @@
   "1.3.20": {
     "en": "(withdrawn) Connection profile system - never released."
   },
-  "1.0.0": {
-    "en": "First version!"
-  },
-  "1.0.1": {
-    "en": "V3 support finetuning and workflow triggering bug fix"
-  },
-  "1.0.2": {
-    "en": "Added fault states and workflows and insights"
-  },
-  "1.0.3": {
-    "en": "Improved feedback on wrong states"
-  },
-  "1.0.4": {
-    "en": "Added some robust code "
-  },
-  "1.0.5": {
-    "en": "Imrpove V3 device detection"
-  },
-  "1.0.6": {
-    "en": "More V3 tweaks due to different registers"
-  },
-  "1.0.7": {
-    "en": "Small mapping bug in charge state"
-  },
-  "1.0.8": {
-    "en": "Power negative inverted to match Homey standard"
-  },
-  "1.0.9": {
-    "en": "handle missing firmware register for V3 better"
-  },
-  "1.0.10": {
-    "en": "Improvd workflow action handler"
-  },
-  "1.0.11": {
-    "en": "Removed deprecated set charge power workflow actions"
-  },
-  "1.0.12": {
-    "en": "flow formatting fixes and build in delay for mode switch"
-  },
-  "1.1.0": {
-    "en": "Improve connection management for timeouts and retry patterns"
-  },
-  "1.1.1": {
-    "en": "Added support for bypassmode and extra mode change token"
-  },
-  "1.1.2": {
-    "en": "Deprecated action card and updated social links"
-  },
-  "1.1.3": {
-    "en": "added max power limits capabilities"
-  },
-  "1.1.4": {
-    "en": "Test page and stability improvements"
-  },
-  "1.1.5": {
-    "en": "stability improvements"
-  },
-  "1.1.6": {
-    "en": "Fix on force soc control ui"
-  },
-  "1.1.7": {
-    "en": "Added ip and slave id config in add wizard"
-  },
-  "1.2.0": {
-    "en": "Added Homey target_power capability for standard energy management (requires Homey >=12.13.0)"
-  },
-  "1.3.0": {
-    "en": "Rework to Homey standard capabilities"
-  },
-  "1.3.1": {
-    "en": "fixed missing target_power enum value"
-  },
-  "1.3.2": {
-    "en": "modbus package and idle battery bug"
-  },
-  "1.3.3": {
-    "en": "Diagnostic ringbuffer for work-mode write/read latency, viewable in settings"
-  },
-  "1.3.4": {
-    "en": "Hot-path optimizations for sustained target_power writes from external orchestrators"
-  },
-  "1.3.5": {
-    "en": "Fix periodic drop to 0W during sustained charging by refreshing the firmware power-countdown (force-control keepalive)"
-  },
-  "1.3.6": {
-    "en": "Extend the force-control keepalive to force_soc, force_charge and force_discharge modes (1.3.5 only covered target_power)"
-  },
-  "1.3.7": {
-    "en": "Also refresh RS485 control flag 42000 in the keepalive - idempotent re-writes of 42010 alone did not refresh the firmware countdown"
-  },
-  "1.3.8": {
-    "en": "Replace keepalive with fast-check auto-recovery: detect unsolicited 42010 reverts within ~1s and re-assert (bounds 0W dips); enforce 2s minimum poll interval and add overlap guard"
-  },
-  "1.3.9": {
-    "en": "Fix force_soc auto-recovery: re-trigger via 42011 (the firmware's write-and-act register) instead of 42010, and skip when SOC has reached its target"
-  },
-  "1.3.10": {
-    "en": "Detect partial reverts (power register zeroed with 42010 still engaged), update target_power capability immediately on recovery for faster chart updates, and remove a race-condition logging artifact"
-  },
-  "1.3.11": {
-    "en": "Stability fix: revert v1.3.10's second fast-check Modbus read which overloaded the Marstek bus and caused device-wide timeouts. Keeps the race-fix and immediate capability update from v1.3.10."
-  },
-  "1.3.12": {
-    "en": "Serialize all Modbus operations through a per-client mutex. Prevents user-driven writes from colliding with the slow poll on the TCP connection, which on some setups caused minute-long timeout cascades."
-  },
-  "1.3.13": {
-    "en": "Add an Auto-recovery opt-out in device settings for users still seeing Modbus instability, plus an automatic 30s back-off after 3 consecutive fast-check errors so a stressed bus is not hammered further."
-  },
-  "1.3.14": {
-    "en": "Make the fast-check interval configurable in device settings (default 1000ms, range 500-30000ms). Lets users tune the trade-off between recovery latency and Modbus bus load without fully disabling Auto-recovery."
-  },
-  "1.3.15": {
-    "en": "Connection lifecycle hygiene: idempotent connect (parallel callers share a single in-flight attempt instead of each opening a TCP socket), properly awaited close on disconnect with a brief TCP grace before reconnecting. Prevents orphaned sockets from holding the Marstek's single native-Modbus client slot."
-  },
-  "1.3.16": {
-    "en": "Diagnostic API endpoints (read/write/dump from the settings page) now reuse the device's existing Modbus connection instead of opening a parallel socket. Removes the last self-collision path on Marstek devices with single-client native Modbus TCP."
-  },
-  "1.3.17": {
-    "en": "Hot-path regression fix: remove the SOC-drift-triggered 42011 write that was firing on every single target_power call (because measured SOC nearly always differs from a previously stored target by more than 1%). The dedicated force_soc recovery path introduced in v1.3.8 already covers what this defensive write was meant to do. Restores v1.3.5-level Modbus bus load for orchestrator-driven setups."
+  "1.3.19": {
+    "en": "Stability + diagnostics: every Modbus error log line is now prefixed with a category tag ([TCP/REFUSED], [TCP/RESET], [Modbus/PROTOCOL_TIMEOUT], [Modbus/NO_RESPONSE], etc.) so it is obvious whether a timeout is a local network/config issue or device-side. Reconnect no longer gives up after 10 attempts - retries forever with backoff capped at 5 minutes so a battery that comes back hours later auto-reconnects without needing an app restart. After 3 consecutive protocol timeouts we proactively force-reconnect to clear the modbus-serial transaction queue (also fixes the slow memory leak on long-disconnected devices). And Homey API calls that previously fired-and-forgot (setSettings, setAvailable, setUnavailable) now swallow rejections after a device is deleted - removes the unhandledRejection noise."
   },
   "1.3.18": {
     "en": "Bring back continuous force_soc neutralization (v1.3.17 broke EMS setups where stale 42011 silently overrode target_power writes), but compare drift against the value we last wrote ourselves instead of the user-selected target capability. Fires ~once per 5-10 minutes under normal load instead of every call - ~300x lower bus load than the v1.3.16 storm while keeping EMS writes effective."
   },
-  "1.3.19": {
-    "en": "Stability + diagnostics: every Modbus error log line is now prefixed with a category tag ([TCP/REFUSED], [TCP/RESET], [Modbus/PROTOCOL_TIMEOUT], [Modbus/NO_RESPONSE], etc.) so it is obvious whether a timeout is a local network/config issue or device-side. Reconnect no longer gives up after 10 attempts - retries forever with backoff capped at 5 minutes so a battery that comes back hours later auto-reconnects without needing an app restart. After 3 consecutive protocol timeouts we proactively force-reconnect to clear the modbus-serial transaction queue (also fixes the slow memory leak on long-disconnected devices). And Homey API calls that previously fired-and-forgot (setSettings, setAvailable, setUnavailable) now swallow rejections after a device is deleted - removes the unhandledRejection noise."
+  "1.3.17": {
+    "en": "Hot-path regression fix: remove the SOC-drift-triggered 42011 write that was firing on every single target_power call (because measured SOC nearly always differs from a previously stored target by more than 1%). The dedicated force_soc recovery path introduced in v1.3.8 already covers what this defensive write was meant to do. Restores v1.3.5-level Modbus bus load for orchestrator-driven setups."
   },
-  "1.4.0": {
-    "en": "Clean rebuild from the 1.3.4 baseline. The 1.3.5-1.3.19 series was a long chain of attempts to mask a Marstek V3 firmware-side behaviour (force-command countdown reverts) that turned out not to be an app-side problem at all. Those attempts (keepalive loops, fast-check recovery, force-reconnect on timeouts) destabilised the Modbus connection for many users that were previously stable. 1.4.0 drops all of that and keeps only the genuine wins that stand on their own: per-instance Modbus mutex to prevent overlapping reads/writes from corrupting framing, connection-lifecycle hygiene (in-flight connect promise caching + close grace) to prevent orphaned sockets on the V3's single-client TCP slot, diagnostic API routing through the device's own ModbusClient (no second competing client on app.js), error classifier in logs, safe Homey API wrappers to prevent unhandledRejection after device delete, pollData abort on first wire failure to cut bus load during recovery, persistent setWarning on the device tile after 5 minutes of sustained timeouts, reconnect ceiling raised from 10 to 30 attempts (~4h of trying before unavailable) for transient network blips, and a copy-paste duplicate read removed from pollData."
+  "1.3.16": {
+    "en": "Diagnostic API endpoints (read/write/dump from the settings page) now reuse the device's existing Modbus connection instead of opening a parallel socket. Removes the last self-collision path on Marstek devices with single-client native Modbus TCP."
+  },
+  "1.3.15": {
+    "en": "Connection lifecycle hygiene: idempotent connect (parallel callers share a single in-flight attempt instead of each opening a TCP socket), properly awaited close on disconnect with a brief TCP grace before reconnecting. Prevents orphaned sockets from holding the Marstek's single native-Modbus client slot."
+  },
+  "1.3.14": {
+    "en": "Make the fast-check interval configurable in device settings (default 1000ms, range 500-30000ms). Lets users tune the trade-off between recovery latency and Modbus bus load without fully disabling Auto-recovery."
+  },
+  "1.3.13": {
+    "en": "Add an Auto-recovery opt-out in device settings for users still seeing Modbus instability, plus an automatic 30s back-off after 3 consecutive fast-check errors so a stressed bus is not hammered further."
+  },
+  "1.3.12": {
+    "en": "Serialize all Modbus operations through a per-client mutex. Prevents user-driven writes from colliding with the slow poll on the TCP connection, which on some setups caused minute-long timeout cascades."
+  },
+  "1.3.11": {
+    "en": "Stability fix: revert v1.3.10's second fast-check Modbus read which overloaded the Marstek bus and caused device-wide timeouts. Keeps the race-fix and immediate capability update from v1.3.10."
+  },
+  "1.3.10": {
+    "en": "Detect partial reverts (power register zeroed with 42010 still engaged), update target_power capability immediately on recovery for faster chart updates, and remove a race-condition logging artifact"
+  },
+  "1.3.9": {
+    "en": "Fix force_soc auto-recovery: re-trigger via 42011 (the firmware's write-and-act register) instead of 42010, and skip when SOC has reached its target"
+  },
+  "1.3.8": {
+    "en": "Replace keepalive with fast-check auto-recovery: detect unsolicited 42010 reverts within ~1s and re-assert (bounds 0W dips); enforce 2s minimum poll interval and add overlap guard"
+  },
+  "1.3.7": {
+    "en": "Also refresh RS485 control flag 42000 in the keepalive - idempotent re-writes of 42010 alone did not refresh the firmware countdown"
+  },
+  "1.3.6": {
+    "en": "Extend the force-control keepalive to force_soc, force_charge and force_discharge modes (1.3.5 only covered target_power)"
+  },
+  "1.3.5": {
+    "en": "Fix periodic drop to 0W during sustained charging by refreshing the firmware power-countdown (force-control keepalive)"
+  },
+  "1.3.4": {
+    "en": "Hot-path optimizations for sustained target_power writes from external orchestrators"
+  },
+  "1.3.3": {
+    "en": "Diagnostic ringbuffer for work-mode write/read latency, viewable in settings"
+  },
+  "1.3.2": {
+    "en": "modbus package and idle battery bug"
+  },
+  "1.3.1": {
+    "en": "fixed missing target_power enum value"
+  },
+  "1.3.0": {
+    "en": "Rework to Homey standard capabilities"
+  },
+  "1.2.0": {
+    "en": "Added Homey target_power capability for standard energy management (requires Homey >=12.13.0)"
+  },
+  "1.1.7": {
+    "en": "Added ip and slave id config in add wizard"
+  },
+  "1.1.6": {
+    "en": "Fix on force soc control ui"
+  },
+  "1.1.5": {
+    "en": "stability improvements"
+  },
+  "1.1.4": {
+    "en": "Test page and stability improvements"
+  },
+  "1.1.3": {
+    "en": "added max power limits capabilities"
+  },
+  "1.1.2": {
+    "en": "Deprecated action card and updated social links"
+  },
+  "1.1.1": {
+    "en": "Added support for bypassmode and extra mode change token"
+  },
+  "1.1.0": {
+    "en": "Improve connection management for timeouts and retry patterns"
+  },
+  "1.0.12": {
+    "en": "flow formatting fixes and build in delay for mode switch"
+  },
+  "1.0.11": {
+    "en": "Removed deprecated set charge power workflow actions"
+  },
+  "1.0.10": {
+    "en": "Improvd workflow action handler"
+  },
+  "1.0.9": {
+    "en": "handle missing firmware register for V3 better"
+  },
+  "1.0.8": {
+    "en": "Power negative inverted to match Homey standard"
+  },
+  "1.0.7": {
+    "en": "Small mapping bug in charge state"
+  },
+  "1.0.6": {
+    "en": "More V3 tweaks due to different registers"
+  },
+  "1.0.5": {
+    "en": "Imrpove V3 device detection"
+  },
+  "1.0.4": {
+    "en": "Added some robust code "
+  },
+  "1.0.3": {
+    "en": "Improved feedback on wrong states"
+  },
+  "1.0.2": {
+    "en": "Added fault states and workflows and insights"
+  },
+  "1.0.1": {
+    "en": "V3 support finetuning and workflow triggering bug fix"
+  },
+  "1.0.0": {
+    "en": "First version!"
   }
 }

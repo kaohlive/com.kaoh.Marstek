@@ -1,6 +1,6 @@
 {
   "name": {
-    "en": "Venus E"
+    "en": "Venus D"
   },
   "platforms": [
     "local"
@@ -16,9 +16,9 @@
   },
   "class": "battery",
   "images": {
-    "large": "/drivers/venus/assets/images/large.png",
-    "small": "/drivers/venus/assets/images/small.png",
-    "xlarge": "/drivers/venus/assets/images/xlarge.png"
+    "large": "/drivers/venusd/assets/images/large.png",
+    "small": "/drivers/venusd/assets/images/small.png",
+    "xlarge": "/drivers/venusd/assets/images/xlarge.png"
   },
   "pair": [
     {
@@ -31,19 +31,17 @@
     "measure_current",
     "measure_power",
     "measure_voltage.battery",
-    "measure_current.battery",
-    "measure_power.battery",
     "meter_power.capacity",
     "measure_power.imported",
     "measure_power.exported",
     "meter_power.imported",
     "meter_power.exported",
-    "alarm_generic",
     "measure_temperature",
     "measure_temperature.mos1",
     "measure_temperature.mos2",
-    "battery_charging_state", 
-    "force_charge_mode",  
+    "battery_charging_state",
+    "alarm_generic",
+    "force_charge_mode",
     "operation_mode",
     "user_work_mode",
     "force_charge_target",
@@ -89,22 +87,10 @@
         "nl": "Netuitvoer stroom"
       }
     },
-    "measure_current.battery": {
-      "title": {
-        "en": "Battery Current",
-        "nl": "Batterij stroom"
-      }
-    },
     "measure_power": {
       "title": {
         "en": "Grid output Power",
         "nl": "Netuitvoer vermogen"
-      }
-    },
-    "measure_power.battery": {
-      "title": {
-        "en": "Battery Power",
-        "nl": "Batterij vermogen"
       }
     },
     "measure_power.imported": {
@@ -217,11 +203,11 @@
           },
           "value": "192.168.1.100",
           "hint": {
-            "en": "IP address of the EW11 Modbus gateway"
+            "en": "IP address of the Venus D (direct Modbus TCP) or your Modbus TCP-to-RS485 gateway (EW11, Waveshare). Some resellers market the Venus D as 'Duravolt'."
           }
         },
         {
-          "id": "port", 
+          "id": "port",
           "type": "number",
           "label": {
             "en": "Port"
@@ -232,7 +218,7 @@
         },
         {
           "id": "slave_id",
-          "type": "number", 
+          "type": "number",
           "label": {
             "en": "Slave ID"
           },
@@ -247,7 +233,7 @@
             "en": "Poll Interval (ms)"
           },
           "value": 5000,
-          "min": 1000,
+          "min": 2000,
           "max": 60000
         },
         {
@@ -303,8 +289,8 @@
             "nl": "Toon fouten"
           },
           "hint": {
-            "en": "Controls whether fault registers 36000/36100/36101 trigger user-visible warnings and flow cards. Register 36103 was removed in v1.5.6 because it produced constant false positives on firmware v149. If a future firmware causes spurious bits on the remaining registers, set to 'Never show' as an escape hatch.",
-            "nl": "Bepaalt of foutregisters 36000/36100/36101 zichtbare waarschuwingen en flow cards triggeren. Register 36103 is verwijderd in v1.5.6 omdat het valse alarmen produceerde op firmware v149. Als een toekomstige firmware valse bits op de overige registers zet, kies dan 'Nooit tonen' als tijdelijke oplossing."
+            "en": "Controls whether fault registers 36000/36100/36101 trigger user-visible warnings and flow cards on this Venus D. Set to 'Never show' as an escape hatch if a firmware update starts producing spurious bits on those registers.",
+            "nl": "Bepaalt of foutregisters 36000/36100/36101 zichtbare waarschuwingen en flow cards triggeren op deze Venus D. Kies 'Nooit tonen' als noodgreep als een firmware update valse bits op deze registers gaat zetten."
           },
           "value": "auto",
           "values": [
@@ -316,83 +302,75 @@
       ]
     },
     {
-    "type": "group",
-    "label": { "en": "Battery info" },
-    "children": [
-      {
-        "id": "storage_capacity",
-        "type": "label",
-        "label": {
-           "en": "Storage capability",
-           "nl": "Opslag capacitijd"
+      "type": "group",
+      "label": { "en": "Device info" },
+      "children": [
+        {
+          "id": "storage_capacity",
+          "type": "label",
+          "label": {
+            "en": "Storage capacity",
+            "nl": "Opslag capaciteit"
+          },
+          "value": "x.x kwh"
         },
-        "value": "x.x kwh"
-      },
-      {
-        "id": "device_name",
-        "type": "label",
-        "label": { "en": "Marstek device name",
-                   "nl": "Marstek apperaat naam"
-                 },
-        "value": "xxx"
-      },
-      {
-        "id": "firmware",
-        "type": "label",
-        "label": { "en": "Firmware" },
-        "value": "xxx"
-      },
-      {
-        "id": "device_version",
-        "type": "label",
-        "label": {
-          "en": "Device Version",
-          "nl": "Apparaat Versie"
+        {
+          "id": "device_name",
+          "type": "label",
+          "label": {
+            "en": "Marstek device name",
+            "nl": "Marstek apparaat naam"
+          },
+          "value": "xxx"
         },
-        "value": "unknown"
-      }
-    ]
-  },
-  {
-    "type": "group",
-    "label": {
-      "en": "Battery Protection Settings",
-      "nl": "Batterij Bescherming Instellingen"
+        {
+          "id": "firmware",
+          "type": "label",
+          "label": { "en": "Firmware" },
+          "value": "xxx"
+        }
+      ]
     },
-    "children": [
-      {
-        "id": "charging_cutoff_soc",
-        "type": "number",
-        "label": {
-          "en": "Charging Cutoff SOC (%)",
-          "nl": "Laad Afkap SOC (%)"
-        },
-        "hint": {
-          "en": "SOC level at which charging stops. Recommended range: 40-100%",
-          "nl": "SOC niveau waarbij laden stopt. Aanbevolen bereik: 40-100%"
-        },
-        "value": 100,
-        "min": 0,
-        "max": 100,
-        "units": "%"
+    {
+      "type": "group",
+      "label": {
+        "en": "Battery Protection Settings",
+        "nl": "Batterij Bescherming Instellingen"
       },
-      {
-        "id": "discharging_cutoff_soc",
-        "type": "number",
-        "label": {
-          "en": "Discharging Cutoff SOC (%)",
-          "nl": "Ontlaad Afkap SOC (%)"
+      "children": [
+        {
+          "id": "charging_cutoff_soc",
+          "type": "number",
+          "label": {
+            "en": "Charging Cutoff SOC (%)",
+            "nl": "Laad Afkap SOC (%)"
+          },
+          "hint": {
+            "en": "SOC level at which charging stops. Recommended range: 40-100%",
+            "nl": "SOC niveau waarbij laden stopt. Aanbevolen bereik: 40-100%"
+          },
+          "value": 100,
+          "min": 0,
+          "max": 100,
+          "units": "%"
         },
-        "hint": {
-          "en": "SOC reserve level below which discharging stops. Recommended range: 12-30%. WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
-          "nl": "SOC reserve niveau waaronder ontladen stopt. Aanbevolen bereik: 12-30%. WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
-        },
-        "value": 15,
-        "min": 0,
-        "max": 100,
-        "units": "%"
-      }
-    ]
-  }
+        {
+          "id": "discharging_cutoff_soc",
+          "type": "number",
+          "label": {
+            "en": "Discharging Cutoff SOC (%)",
+            "nl": "Ontlaad Afkap SOC (%)"
+          },
+          "hint": {
+            "en": "SOC reserve level below which discharging stops. Recommended range: 12-30%. WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+            "nl": "SOC reserve niveau waaronder ontladen stopt. Aanbevolen bereik: 12-30%. WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+          },
+          "value": 15,
+          "min": 0,
+          "max": 100,
+          "units": "%"
+        }
+      ]
+    }
   ]
 }

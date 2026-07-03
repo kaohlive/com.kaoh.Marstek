@@ -1,0 +1,1524 @@
+{
+  "triggers": [
+    {
+      "id": "venusd_charging_status_changed",
+      "title": {
+        "en": "Charging status changed",
+        "nl": "Laadstatus gewijzigd"
+      },
+      "titleFormatted": {
+        "en": "Charging status changed",
+        "nl": "Laadstatus gewijzigd"
+      },
+      "args": [],
+      "tokens": [
+        {
+          "name": "status",
+          "type": "string",
+          "title": {
+            "en": "Status",
+            "nl": "Status"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_battery_started_charging",
+      "title": {
+        "en": "Battery started charging",
+        "nl": "Batterij is gaan laden"
+      },
+      "args": []
+    },
+    {
+      "id": "venusd_battery_started_discharging",
+      "title": {
+        "en": "Battery started discharging",
+        "nl": "Batterij is gaan ontladen"
+      },
+      "titleFormatted": {
+        "en": "Battery started discharging",
+        "nl": "Batterij is gaan ontladen"
+      },
+      "args": []
+    },
+    {
+      "id": "venusd_soc_below_threshold",
+      "title": {
+        "en": "Battery level dropped below threshold",
+        "nl": "Batterijniveau onder drempel"
+      },
+      "titleFormatted": {
+        "en": "Battery level dropped below threshold",
+        "nl": "Batterijniveau onder threshold"
+      },
+      "args": [],
+      "tokens": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "title": {
+            "en": "Threshold (%)",
+            "nl": "Drempel (%)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_soc_above_threshold",
+      "title": {
+        "en": "Battery level rose above threshold",
+        "nl": "Batterijniveau boven drempel"
+      },
+      "titleFormatted": {
+        "en": "Battery level rose above threshold",
+        "nl": "Batterijniveau boven threshold"
+      },
+      "args": [],
+      "tokens": [
+        {
+          "name": "threshold",
+          "type": "number",
+          "title": {
+            "en": "Threshold (%)",
+            "nl": "Drempel (%)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_temperature_too_high",
+      "title": {
+        "en": "Battery temperature too high",
+        "nl": "Batterijtemperatuur te hoog"
+      },
+      "titleFormatted": {
+        "en": "Battery temperature too high",
+        "nl": "Batterijtemperatuur te hoog"
+      },
+      "args": [],
+      "tokens": [
+        {
+          "name": "temperature",
+          "type": "number",
+          "title": {
+            "en": "Temperature (°C)",
+            "nl": "Temperatuur (°C)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_temperature_too_low",
+      "title": {
+        "en": "Battery temperature too low",
+        "nl": "Batterijtemperatuur te laag"
+      },
+      "titleFormatted": {
+        "en": "Battery temperature too low",
+        "nl": "Batterijtemperatuur te laag"
+      },
+      "args": [],
+      "tokens": [
+        {
+          "name": "temperature",
+          "type": "number",
+          "title": {
+            "en": "Temperature (°C)",
+            "nl": "Temperatuur (°C)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_backup_mode_changed",
+      "title": {
+        "en": "Battery backup mode changed",
+        "nl": "Batterij backup modus is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Battery backup mode changed to [[mode]]",
+        "nl": "Batterij backup modus is veranderd naar [[mode]]"
+      },
+      "hint": {
+        "en": "Triggered when battery backup mode is enabled or disabled",
+        "nl": "Geactiveerd wanneer batterij backup modus wordt in- of uitgeschakeld"
+      },
+      "tokens": [
+        {
+          "name": "mode",
+          "type": "boolean",
+          "title": {
+            "en": "Backup Mode",
+            "nl": "Backup Modus"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "true",
+              "label": {
+                "en": "Backup Active",
+                "nl": "Backup Actief"
+              }
+            },
+            {
+              "id": "false",
+              "label": {
+                "en": "Normal Mode",
+                "nl": "Normale Modus"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_charge_mode_changed",
+      "title": {
+        "en": "Force charge mode changed",
+        "nl": "Gedwongen laadmodus is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Force charge mode changed to [[mode]]",
+        "nl": "Gedwongen laadmodus is veranderd naar [[mode]]"
+      },
+      "hint": {
+        "en": "Triggered when force charge mode changes",
+        "nl": "Geactiveerd wanneer gedwongen laadmodus verandert"
+      },
+      "tokens": [
+        {
+          "name": "mode",
+          "type": "string",
+          "title": {
+            "en": "Force Charge Mode",
+            "nl": "Gedwongen Laadmodus"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "none",
+              "label": {
+                "en": "Force mode Off",
+                "nl": "Gedwongen mode uit"
+              }
+            },
+            {
+              "id": "force_charge",
+              "label": {
+                "en": "Force Charge",
+                "nl": "Forceer Laden"
+              }
+            },
+            {
+              "id": "force_discharge",
+              "label": {
+                "en": "Force Discharge",
+                "nl": "Forceer Ontladen"
+              }
+            },
+            {
+              "id": "force_soc",
+              "label": {
+                "en": "Force to SOC target",
+                "nl": "Forceer tot SOC doel"
+              }
+            },
+            {
+              "id": "target_power",
+              "label": {
+                "en": "Homey target power",
+                "nl": "Homey doelvermogen"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_operation_mode_changed",
+      "title": {
+        "en": "Operation mode changed",
+        "nl": "Bedrijfsmodus is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Operation mode changed to [[mode]]",
+        "nl": "Bedrijfsmodus is veranderd naar [[mode]]"
+      },
+      "hint": {
+        "en": "Triggered when battery operation mode changes",
+        "nl": "Geactiveerd wanneer batterij bedrijfsmodus verandert"
+      },
+      "tokens": [
+        {
+          "name": "mode",
+          "type": "string",
+          "title": {
+            "en": "Operation Mode",
+            "nl": "Bedrijfsmodus"
+          }
+        },
+        {
+          "name": "prevMode",
+          "type": "string",
+          "title": {
+            "en": "Previous Operation Mode",
+            "nl": "Vorige bedrijfsmodus"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "sleep",
+              "label": {
+                "en": "Sleep",
+                "nl": "slaapstand"
+              }
+            },
+            {
+              "id": "standby",
+              "label": {
+                "en": "Standby",
+                "nl": "Stand-by"
+              }
+            },
+            {
+              "id": "charge",
+              "label": {
+                "en": "Charging",
+                "nl": "Laden"
+              }
+            },
+            {
+              "id": "discharge",
+              "label": {
+                "en": "Discharging",
+                "nl": "Ontladen"
+              }
+            },
+            {
+              "id": "backup",
+              "label": {
+                "en": "Backup mode",
+                "nl": "Backup"
+              }
+            },
+            {
+              "id": "update",
+              "label": {
+                "en": "OTA upgrade",
+                "nl": "software upgrade"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_user_work_mode_changed",
+      "deprecated": true,
+      "title": {
+        "en": "Work mode changed",
+        "nl": "Optimalizatie modus is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Work mode changed to [[mode]]",
+        "nl": "Optimalizatie modus is veranderd naar [[mode]]"
+      },
+      "hint": {
+        "en": "Triggered when work mode changes",
+        "nl": "Geactiveerd wanneer optimalizatie modus verandert"
+      },
+      "tokens": [
+        {
+          "name": "mode",
+          "type": "string",
+          "title": {
+            "en": "Work Mode",
+            "nl": "Optimalizatie Modus"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "manual",
+              "label": {
+                "en": "Manual",
+                "nl": "Handmatig"
+              }
+            },
+            {
+              "id": "anti_feed",
+              "label": {
+                "en": "Grid zero mode",
+                "nl": "0 op de meter"
+              }
+            },
+            {
+              "id": "trade_mode",
+              "label": {
+                "en": "Trade on energy tarifs",
+                "nl": "Handelen op energie tarieven"
+              }
+            },
+            {
+              "id": "control_mode",
+              "label": {
+                "en": "Use force controls",
+                "nl": "Gebruik forceer laadmodus"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_charge_power_changed",
+      "title": {
+        "en": "Force charge power changed",
+        "nl": "Gedwongen laad vermogen is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Force charge power changed to [[power]] W",
+        "nl": "Gedwongen laad vermogen is veranderd naar [[power]] W"
+      },
+      "hint": {
+        "en": "Triggered when force charge power setting changes",
+        "nl": "Geactiveerd wanneer gedwongen laad vermogen instelling verandert"
+      },
+      "tokens": [
+        {
+          "name": "power",
+          "type": "number",
+          "title": {
+            "en": "Power",
+            "nl": "Vermogen"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_discharge_power_changed",
+      "title": {
+        "en": "Force discharge power changed",
+        "nl": "Gedwongen ontlaad vermogen is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Force discharge power changed to [[power]] W",
+        "nl": "Gedwongen ontlaad vermogen is veranderd naar [[power]] W"
+      },
+      "hint": {
+        "en": "Triggered when force discharge power setting changes",
+        "nl": "Geactiveerd wanneer gedwongen ontlaad vermogen instelling verandert"
+      },
+      "tokens": [
+        {
+          "name": "power",
+          "type": "number",
+          "title": {
+            "en": "Power",
+            "nl": "Vermogen"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_charge_target_changed",
+      "title": {
+        "en": "Force SOC target changed",
+        "nl": "Gedwongen SOC doel is veranderd"
+      },
+      "titleFormatted": {
+        "en": "Force SOC target changed to [[target]]%",
+        "nl": "Gedwongen SOC doel is veranderd naar [[target]]%"
+      },
+      "hint": {
+        "en": "Triggered when force SOC target setting changes",
+        "nl": "Geactiveerd wanneer gedwongen SOC doel instelling verandert"
+      },
+      "tokens": [
+        {
+          "name": "target",
+          "type": "number",
+          "title": {
+            "en": "SOC Target",
+            "nl": "SOC Doel"
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "target",
+          "type": "range",
+          "title": {
+            "en": "SOC Target (%)",
+            "nl": "SOC Doel (%)"
+          },
+          "min": 11,
+          "max": 100,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "venusd_battery_fault_detected",
+      "title": {
+        "en": "Battery fault detected",
+        "nl": "Batterijfout gedetecteerd"
+      },
+      "titleFormatted": {
+        "en": "Battery fault detected",
+        "nl": "Batterijfout gedetecteerd"
+      },
+      "hint": {
+        "en": "Triggered when any battery fault is detected",
+        "nl": "Geactiveerd wanneer een batterijfout wordt gedetecteerd"
+      },
+      "tokens": [
+        {
+          "name": "message",
+          "type": "string",
+          "title": {
+            "en": "Fault Message",
+            "nl": "Foutmelding"
+          }
+        },
+        {
+          "name": "alarm_codes",
+          "type": "string",
+          "title": {
+            "en": "Alarm Codes",
+            "nl": "Alarm Codes"
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "id": "venusd_battery_warning_detected",
+      "title": {
+        "en": "Battery warning detected",
+        "nl": "Batterijwaarschuwing gedetecteerd"
+      },
+      "titleFormatted": {
+        "en": "Battery warning detected",
+        "nl": "Batterijwaarschuwing gedetecteerd"
+      },
+      "hint": {
+        "en": "Triggered when any battery warning is detected",
+        "nl": "Geactiveerd wanneer een batterijwaarschuwing wordt gedetecteerd"
+      },
+      "tokens": [
+        {
+          "name": "message",
+          "type": "string",
+          "title": {
+            "en": "Warning Message",
+            "nl": "Waarschuwingsbericht"
+          }
+        },
+        {
+          "name": "alarm_codes",
+          "type": "string",
+          "title": {
+            "en": "Alarm Codes",
+            "nl": "Alarm Codes"
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "id": "venusd_grid_fault_detected",
+      "title": {
+        "en": "Grid fault detected",
+        "nl": "Netwerkfout gedetecteerd"
+      },
+      "titleFormatted": {
+        "en": "Grid fault detected",
+        "nl": "Netwerkfout gedetecteerd"
+      },
+      "hint": {
+        "en": "Triggered when grid-related faults are detected",
+        "nl": "Geactiveerd wanneer netwerkgerelateerde fouten worden gedetecteerd"
+      },
+      "tokens": [
+        {
+          "name": "message",
+          "type": "string",
+          "title": {
+            "en": "Grid Fault Details",
+            "nl": "Netwerkfout Details"
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "id": "venusd_battery_system_fault_detected",
+      "title": {
+        "en": "Battery system fault detected",
+        "nl": "Batterijsysteem fout gedetecteerd"
+      },
+      "titleFormatted": {
+        "en": "Battery system fault detected",
+        "nl": "Batterijsysteem fout gedetecteerd"
+      },
+      "hint": {
+        "en": "Triggered when battery system faults are detected",
+        "nl": "Geactiveerd wanneer batterijsysteem fouten worden gedetecteerd"
+      },
+      "tokens": [
+        {
+          "name": "message",
+          "type": "string",
+          "title": {
+            "en": "Battery System Fault Details",
+            "nl": "Batterijsysteem Fout Details"
+          }
+        }
+      ],
+      "args": []
+    }
+  ],
+  "conditions": [
+    {
+      "id": "venusd_backup_mode_is",
+      "title": {
+        "en": "Battery backup mode is",
+        "nl": "Batterij backup modus is"
+      },
+      "titleFormatted": {
+        "en": "Battery backup mode !{{is|is not}} [[mode]]",
+        "nl": "Batterij backup modus !{{is|is niet}} [[mode]]"
+      },
+      "hint": {
+        "en": "Check if battery backup mode is enabled or disabled",
+        "nl": "Controleer of batterij backup modus is ingeschakeld of uitgeschakeld"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "true",
+              "label": {
+                "en": "Backup Active",
+                "nl": "Backup Actief"
+              }
+            },
+            {
+              "id": "false",
+              "label": {
+                "en": "Normal Mode",
+                "nl": "Normale Modus"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_charge_mode_is",
+      "title": {
+        "en": "Force charge mode is",
+        "nl": "Gedwongen laadmodus is"
+      },
+      "titleFormatted": {
+        "en": "Force charge mode !{{is|is not}} [[mode]]",
+        "nl": "Gedwongen laadmodus !{{is|is niet}} [[mode]]"
+      },
+      "hint": {
+        "en": "Check current force charge mode",
+        "nl": "Controleer huidige gedwongen laadmodus"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "none",
+              "label": {
+                "en": "Force mode Off",
+                "nl": "Gedwongen mode uit"
+              }
+            },
+            {
+              "id": "force_charge",
+              "label": {
+                "en": "Force Charge",
+                "nl": "Forceer Laden"
+              }
+            },
+            {
+              "id": "force_discharge",
+              "label": {
+                "en": "Force Discharge",
+                "nl": "Forceer Ontladen"
+              }
+            },
+            {
+              "id": "force_soc",
+              "label": {
+                "en": "Force to SOC target",
+                "nl": "Forceer tot SOC doel"
+              }
+            },
+            {
+              "id": "target_power",
+              "label": {
+                "en": "Homey target power",
+                "nl": "Homey doelvermogen"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_operation_mode_is",
+      "title": {
+        "en": "Operation mode is",
+        "nl": "Bedrijfsmodus is"
+      },
+      "titleFormatted": {
+        "en": "Operation mode !{{is|is not}} [[mode]]",
+        "nl": "Bedrijfsmodus !{{is|is niet}} [[mode]]"
+      },
+      "hint": {
+        "en": "Check current battery operation mode",
+        "nl": "Controleer huidige batterij bedrijfsmodus"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "sleep",
+              "label": {
+                "en": "Sleep",
+                "nl": "slaapstand"
+              }
+            },
+            {
+              "id": "standby",
+              "label": {
+                "en": "Standby",
+                "nl": "Stand-by"
+              }
+            },
+            {
+              "id": "charge",
+              "label": {
+                "en": "Charging",
+                "nl": "Laden"
+              }
+            },
+            {
+              "id": "discharge",
+              "label": {
+                "en": "Discharging",
+                "nl": "Ontladen"
+              }
+            },
+            {
+              "id": "backup",
+              "label": {
+                "en": "Backup mode",
+                "nl": "Backup"
+              }
+            },
+            {
+              "id": "update",
+              "label": {
+                "en": "OTA upgrade",
+                "nl": "software upgrade"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_user_work_mode_is",
+      "deprecated": true,
+      "title": {
+        "en": "Work mode is",
+        "nl": "Optimalizatie modus is"
+      },
+      "titleFormatted": {
+        "en": "Work mode !{{is|is not}} [[mode]]",
+        "nl": "Optimalizatie modus !{{is|is niet}} [[mode]]"
+      },
+      "hint": {
+        "en": "Check current work mode",
+        "nl": "Controleer huidige optimalizatie modus"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "manual",
+              "label": {
+                "en": "Manual",
+                "nl": "Handmatig"
+              }
+            },
+            {
+              "id": "anti_feed",
+              "label": {
+                "en": "Grid zero mode",
+                "nl": "0 op de meter"
+              }
+            },
+            {
+              "id": "trade_mode",
+              "label": {
+                "en": "Trade on energy tarifs",
+                "nl": "Handelen op energie tarieven"
+              }
+            },
+            {
+              "id": "control_mode",
+              "label": {
+                "en": "Use force controls",
+                "nl": "Gebruik forceer laadmodus"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_charge_power_greater_than",
+      "title": {
+        "en": "Force charge power is greater than",
+        "nl": "Gedwongen laad vermogen is groter dan"
+      },
+      "titleFormatted": {
+        "en": "Force charge power !{{is greater than|is not greater than}} [[power]] W",
+        "nl": "Gedwongen laad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
+      },
+      "hint": {
+        "en": "Check if force charge power is above a threshold",
+        "nl": "Controleer of gedwongen laad vermogen boven een drempel is"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_discharge_power_greater_than",
+      "title": {
+        "en": "Force discharge power is greater than",
+        "nl": "Gedwongen ontlaad vermogen is groter dan"
+      },
+      "titleFormatted": {
+        "en": "Force discharge power !{{is greater than|is not greater than}} [[power]] W",
+        "nl": "Gedwongen ontlaad vermogen !{{is groter dan|is niet groter dan}} [[power]] W"
+      },
+      "hint": {
+        "en": "Check if force discharge power is above a threshold",
+        "nl": "Controleer of gedwongen ontlaad vermogen boven een drempel is"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_force_charge_target_greater_than",
+      "title": {
+        "en": "Force SOC target is greater than",
+        "nl": "Gedwongen SOC doel is groter dan"
+      },
+      "titleFormatted": {
+        "en": "Force SOC target !{{is greater than|is not greater than}} [[target]]%",
+        "nl": "Gedwongen SOC doel !{{is groter dan|is niet groter dan}} [[target]]%"
+      },
+      "hint": {
+        "en": "Check if force SOC target is above a threshold",
+        "nl": "Controleer of gedwongen SOC doel boven een drempel is"
+      },
+      "args": [
+        {
+          "name": "target",
+          "type": "range",
+          "title": {
+            "en": "SOC Target (%)",
+            "nl": "SOC Doel (%)"
+          },
+          "min": 11,
+          "max": 100,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "venusd_is_charging",
+      "title": {
+        "en": "Battery is charging",
+        "nl": "Batterij is aan het laden"
+      },
+      "titleFormatted": {
+        "en": "Battery !{{is|is not}} charging",
+        "nl": "Batterij !{{is|is niet}} aan het laden"
+      },
+      "args": []
+    },
+    {
+      "id": "venusd_is_discharging",
+      "title": {
+        "en": "Battery is discharging",
+        "nl": "Batterij is aan het ontladen"
+      },
+      "titleFormatted": {
+        "en": "Battery !{{is|is not}} discharging",
+        "nl": "Batterij !{{is|is niet}} aan het ontladen"
+      },
+      "args": []
+    },
+    {
+      "id": "venusd_soc_above",
+      "title": {
+        "en": "Battery level is above",
+        "nl": "Batterijniveau is boven"
+      },
+      "titleFormatted": {
+        "en": "Battery level !{{is above|is not above}} [[percentage]]%",
+        "nl": "Batterijniveau !{{is boven|is niet boven}} [[percentage]]%"
+      },
+      "args": [
+        {
+          "name": "percentage",
+          "type": "number",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_soc_below",
+      "title": {
+        "en": "Battery level is below",
+        "nl": "Batterijniveau is onder"
+      },
+      "titleFormatted": {
+        "en": "Battery level !{{is below|is not below}} [[percentage]]%",
+        "nl": "Batterijniveau !{{is onder|is niet onder}} [[percentage]]%"
+      },
+      "args": [
+        {
+          "name": "percentage",
+          "type": "number",
+          "min": 0,
+          "max": 100,
+          "step": 1,
+          "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_temperature_above",
+      "title": {
+        "en": "Temperature is above",
+        "nl": "Temperatuur is boven"
+      },
+      "titleFormatted": {
+        "en": "Temperature !{{is above|is not above}} [[temperature]]°C",
+        "nl": "Temperatuur !{{is boven|is niet boven}} [[temperature]]°C"
+      },
+      "args": [
+        {
+          "name": "temperature",
+          "type": "number",
+          "min": -50,
+          "max": 100,
+          "step": 1,
+          "title": {
+            "en": "Temperature (°C)",
+            "nl": "Temperatuur (°C)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "venusd_max_charge_power_limit_below",
+      "title": {
+        "en": "Max charge power limit is below",
+        "nl": "Max laad vermogen limiet is onder"
+      },
+      "titleFormatted": {
+        "en": "Max charge power limit !{{is below|is not below}} [[power]] W",
+        "nl": "Max laad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
+      },
+      "hint": {
+        "en": "Check if the device protection system is limiting charge power below a threshold (e.g. due to low temperature)",
+        "nl": "Controleer of het apparaatbeveiligingssysteem het laadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_max_discharge_power_limit_below",
+      "title": {
+        "en": "Max discharge power limit is below",
+        "nl": "Max ontlaad vermogen limiet is onder"
+      },
+      "titleFormatted": {
+        "en": "Max discharge power limit !{{is below|is not below}} [[power]] W",
+        "nl": "Max ontlaad vermogen limiet !{{is onder|is niet onder}} [[power]] W"
+      },
+      "hint": {
+        "en": "Check if the device protection system is limiting discharge power below a threshold (e.g. due to low temperature)",
+        "nl": "Controleer of het apparaatbeveiligingssysteem het ontlaadvermogen beperkt onder een drempel (bijv. door lage temperatuur)"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_charging_cutoff_soc_above",
+      "title": {
+        "en": "Charging cutoff SOC is above",
+        "nl": "Laad afkap SOC is boven"
+      },
+      "titleFormatted": {
+        "en": "Charging cutoff SOC !{{is above|is not above}} [[percentage]]%",
+        "nl": "Laad afkap SOC !{{is boven|is niet boven}} [[percentage]]%"
+      },
+      "hint": {
+        "en": "Check if the charging cutoff SOC setting is above a threshold",
+        "nl": "Controleer of de laad afkap SOC instelling boven een drempel is"
+      },
+      "args": [
+        {
+          "name": "percentage",
+          "type": "range",
+          "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+          },
+          "min": 40,
+          "max": 100,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "venusd_discharging_cutoff_soc_above",
+      "title": {
+        "en": "Discharging cutoff SOC is above",
+        "nl": "Ontlaad afkap SOC is boven"
+      },
+      "titleFormatted": {
+        "en": "Discharging cutoff SOC (reserve) !{{is above|is not above}} [[percentage]]%",
+        "nl": "Ontlaad afkap SOC (reserve) !{{is boven|is niet boven}} [[percentage]]%"
+      },
+      "hint": {
+        "en": "Check if the discharging cutoff SOC (reserve) setting is above a threshold",
+        "nl": "Controleer of de ontlaad afkap SOC (reserve) instelling boven een drempel is"
+      },
+      "args": [
+        {
+          "name": "percentage",
+          "type": "range",
+          "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+          },
+          "min": 12,
+          "max": 30,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "venusd_has_fault",
+      "title": {
+        "en": "Battery has fault",
+        "nl": "Batterij heeft storing"
+      },
+      "titleFormatted": {
+        "en": "Battery !{{has|does not have}} a fault",
+        "nl": "Batterij !{{heeft|heeft geen}} storing"
+      },
+      "args": []
+    }
+  ],
+  "actions": [
+    {
+      "deprecated": true,
+      "id": "venusd_set_charge_mode",
+      "title": {
+        "en": "Set charge mode",
+        "nl": "Laadmodus instellen"
+      },
+      "titleFormatted": {
+        "en": "Set charge mode to [[mode]]",
+        "nl": "Laadmodus instellen op [[mode]]"
+      },
+      "hint": {
+        "en": "Change battery charge mode",
+        "nl": "Batterij laadmodus veranderen"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "auto",
+              "label": {
+                "en": "Automatic",
+                "nl": "Automatisch"
+              }
+            },
+            {
+              "id": "manual",
+              "label": {
+                "en": "Manual",
+                "nl": "Handmatig"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_backup_mode",
+      "title": {
+        "en": "Set battery backup mode",
+        "nl": "Batterij backup modus instellen"
+      },
+      "titleFormatted": {
+        "en": "Set battery backup mode to [[mode]]",
+        "nl": "Batterij backup modus instellen op [[mode]]"
+      },
+      "hint": {
+        "en": "Enable or disable battery backup mode",
+        "nl": "Batterij backup modus in- of uitschakelen"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "true",
+              "label": {
+                "en": "Backup Active",
+                "nl": "Backup Actief"
+              }
+            },
+            {
+              "id": "false",
+              "label": {
+                "en": "Normal Mode",
+                "nl": "Normale Modus"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_force_charge_mode",
+      "deprecated": true,
+      "title": {
+        "en": "Set force charge mode",
+        "nl": "Gedwongen laadmodus instellen"
+      },
+      "titleFormatted": {
+        "en": "Set force charge mode to [[mode]]",
+        "nl": "Gedwongen laadmodus instellen op [[mode]]"
+      },
+      "hint": {
+        "en": "Change battery charging mode",
+        "nl": "Batterij laadmodus veranderen"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "none",
+              "label": {
+                "en": "Force mode Off",
+                "nl": "Gedwongen mode uit"
+              }
+            },
+            {
+              "id": "force_charge",
+              "label": {
+                "en": "Force Charge",
+                "nl": "Forceer Laden"
+              }
+            },
+            {
+              "id": "force_discharge",
+              "label": {
+                "en": "Force Discharge",
+                "nl": "Forceer Ontladen"
+              }
+            },
+            {
+              "id": "force_soc",
+              "label": {
+                "en": "Force to SOC target",
+                "nl": "Forceer tot SOC doel"
+              }
+            },
+            {
+              "id": "target_power",
+              "label": {
+                "en": "Homey target power",
+                "nl": "Homey doelvermogen"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_user_work_mode",
+      "deprecated": true,
+      "title": {
+        "en": "Set work mode",
+        "nl": "Optimalizatie modus instellen"
+      },
+      "titleFormatted": {
+        "en": "Set work mode to [[mode]]",
+        "nl": "Optimalizatie modus instellen op [[mode]]"
+      },
+      "hint": {
+        "en": "Change work mode selection",
+        "nl": "Optimalizatie modus selectie veranderen"
+      },
+      "args": [
+        {
+          "name": "mode",
+          "type": "dropdown",
+          "title": {
+            "en": "Mode",
+            "nl": "Modus"
+          },
+          "values": [
+            {
+              "id": "manual",
+              "label": {
+                "en": "Manual",
+                "nl": "Handmatig"
+              }
+            },
+            {
+              "id": "anti_feed",
+              "label": {
+                "en": "Grid zero mode",
+                "nl": "0 op de meter"
+              }
+            },
+            {
+              "id": "trade_mode",
+              "label": {
+                "en": "Trade on energy tarifs",
+                "nl": "Handelen op energie tarieven"
+              }
+            },
+            {
+              "id": "control_mode",
+              "label": {
+                "en": "Use force controls",
+                "nl": "Gebruik forceer laadmodus"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_force_charge_power",
+      "deprecated": true,
+      "title": {
+        "en": "Set force charge power",
+        "nl": "Gedwongen laad vermogen instellen"
+      },
+      "titleFormatted": {
+        "en": "Set force charge power to [[power]] W",
+        "nl": "Gedwongen laad vermogen instellen op [[power]] W"
+      },
+      "hint": {
+        "en": "Set power setting for forced charge",
+        "nl": "Vermogen instelling voor gedwongen laden instellen"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_force_discharge_power",
+      "deprecated": true,
+      "title": {
+        "en": "Set force discharge power",
+        "nl": "Gedwongen ontlaad vermogen instellen"
+      },
+      "titleFormatted": {
+        "en": "Set force discharge power to [[power]] W",
+        "nl": "Gedwongen ontlaad vermogen instellen op [[power]] W"
+      },
+      "hint": {
+        "en": "Set power setting for forced discharge",
+        "nl": "Vermogen instelling voor gedwongen ontladen instellen"
+      },
+      "args": [
+        {
+          "name": "power",
+          "type": "range",
+          "title": {
+            "en": "Power (W)",
+            "nl": "Vermogen (W)"
+          },
+          "min": 0,
+          "max": 2500,
+          "step": 5
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_force_charge_target",
+      "title": {
+        "en": "Set force SOC target",
+        "nl": "Gedwongen SOC doel instellen"
+      },
+      "titleFormatted": {
+        "en": "Set force SOC target to [[target]]%",
+        "nl": "Gedwongen SOC doel instellen op [[target]]%"
+      },
+      "hint": {
+        "en": "Set target SOC setting for force (dis)charge",
+        "nl": "Doel SOC instelling voor gedwongen (ont)laden instellen"
+      },
+      "args": [
+        {
+          "name": "target",
+          "type": "range",
+          "title": {
+            "en": "SOC Target (%)",
+            "nl": "SOC Doel (%)"
+          },
+          "min": 11,
+          "max": 100,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_charging_cutoff_soc",
+      "title": {
+        "en": "Set charging cutoff SOC",
+        "nl": "Laad afkap SOC instellen"
+      },
+      "titleFormatted": {
+        "en": "Set charging cutoff SOC to [[percentage]]%",
+        "nl": "Laad afkap SOC instellen op [[percentage]]%"
+      },
+      "hint": {
+        "en": "Set the SOC level at which charging stops (40-100%)",
+        "nl": "Stel het SOC niveau in waarbij laden stopt (40-100%)"
+      },
+      "args": [
+        {
+          "name": "percentage",
+          "type": "range",
+          "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+          },
+          "min": 40,
+          "max": 100,
+          "step": 1
+        }
+      ]
+    },
+    {
+      "id": "venusd_set_discharging_cutoff_soc",
+      "title": {
+        "en": "Set discharging cutoff SOC (reserve)",
+        "nl": "Ontlaad afkap SOC (reserve) instellen"
+      },
+      "titleFormatted": {
+        "en": "Set discharging cutoff SOC to [[percentage]]%",
+        "nl": "Ontlaad afkap SOC instellen op [[percentage]]%"
+      },
+      "hint": {
+        "en": "Set the SOC reserve level below which discharging stops (12-30%). WARNING: Setting this below 15% is not recommended as it may reduce battery lifespan.",
+        "nl": "Stel het SOC reserve niveau in waaronder ontladen stopt (12-30%). WAARSCHUWING: Instellen onder 15% wordt niet aanbevolen omdat dit de levensduur van de batterij kan verkorten."
+      },
+      "args": [
+        {
+          "name": "percentage",
+          "type": "range",
+          "title": {
+            "en": "Percentage (%)",
+            "nl": "Percentage (%)"
+          },
+          "min": 12,
+          "max": 30,
+          "step": 1
+        }
+      ]
+    }
+  ]
+}

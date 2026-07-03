@@ -12,44 +12,15 @@ class ModbusClient extends EventEmitter {
     this.reconnectInterval = null;
     this.config = null;
     this.reconnectAttempts = 0;
-    // Lenient max attempts (~4h with 5-60s exponential backoff) before we
-    // give up and the device goes unavailable. v1.3.4 used 10 which gave up
-    // after ~7 minutes, requiring a manual app restart for any transient
-    // network blip. v1.3.19 removed the ceiling entirely (indefinite retry)
-    // but that combined badly with the also-introduced forceReconnect-on-
-    // timeouts to produce eternal reconnect storms. 30 is a middle ground:
-    // a truly dead device produces a user-visible unavailable state, but a
-    // 2-hour ISP outage still recovers without intervention.
-    this.maxReconnectAttempts = 30;
+    this.maxReconnectAttempts = 10;
     this.reconnectDelay = 5000; // Start with 5 seconds
     this.maxReconnectDelay = 60000; // Max 60 seconds
     this.isReconnecting = false;
-
-    // Promise-chain mutex: every wire-touching call (read/write) goes through
-    // _serialize() so two operations can never be in flight on the same TCP
-    // connection. Without this, a slow-poll read and a user-driven write can
-    // hit the modbus-serial client concurrently, corrupting response framing
-    // and triggering a cascade of TransactionTimedOutError. Marstek firmware
-    // is bus-load sensitive enough that even brief overlap kills it for
-    // ~minutes (3-retry cascade @ ~5s timeout = ~15s per failed call).
-    this._busy = Promise.resolve();
-    // In-flight connect promise. connect() is idempotent under this: two
-    // parallel callers (e.g. a slow poll and a user write that both first
-    // call connectModbus()) share the same connect attempt rather than each
-    // opening their own TCP socket and orphaning the loser. Marstek devices
-    // with native Modbus TCP only allow one client at a time - an orphaned
-    // socket keeps the device's only slot occupied until TCP TIME_WAIT clears.
-    this._connectPromise = null;
     // Used by _classifyError to differentiate "slave never answered" from
     // "slave answered before and has now stopped" - the former is almost
     // always a misconfigured slave_id, the latter is the device going away.
     this._hasEverSucceeded = false;
   }
-
-  // TCP cleanup grace after a close() before we open the next socket. The
-  // FIN/ACK handshake plus the device's view of "slot is free" takes a moment;
-  // skipping this can race with the Marstek's slot-release on native Modbus.
-  static CLOSE_GRACE_MS = 150;
 
   // Classifies a Modbus / TCP error into a short tag for log lines. Lets
   // support tell at a glance whether a timeout is a local-network/config
@@ -88,61 +59,20 @@ class ModbusClient extends EventEmitter {
     return { tag: '[TCP/UNKNOWN]', code: code || 'UNKNOWN' };
   }
 
-  // Serializes wire-touching operations against this client. Acquires by
-  // awaiting the previous tail; releases when fn() resolves or rejects so the
-  // mutex is never held past the actual operation. Retry loops inside the
-  // wrapped fn intentionally stay under the lock - releasing between retries
-  // would let another caller jump in mid-recovery.
-  async _serialize(fn) {
-    const prev = this._busy;
-    let release;
-    this._busy = new Promise((resolve) => { release = resolve; });
-    await prev;
-    try {
-      return await fn();
-    } finally {
-      release();
-    }
-  }
-
   async connect(config) {
-    // Idempotency: if another caller is already connecting, hand them the same
-    // promise instead of starting a parallel TCP open. Without this, two
-    // callers (slow poll + user write that both first call connectModbus())
-    // would each construct a ModbusRTU and call connectTCP - one becomes
-    // this.client, the other's socket is now orphaned but still consumes the
-    // Marstek's single client slot until TCP times it out.
-    if (this._connectPromise) return this._connectPromise;
-    this._connectPromise = this._doConnect(config).finally(() => {
-      this._connectPromise = null;
-    });
-    return this._connectPromise;
-  }
-
-  async _doConnect(config) {
     this.config = config;
 
     try {
-      // Any scheduled auto-reconnect would just race with us - cancel it.
-      this.clearReconnectInterval();
-      this.isReconnecting = false;
-
-      // Close existing client if any. Drop our reference first so the
-      // socket 'close' handler we registered does not schedule yet another
-      // reconnect on top of this one.
+      // Close existing client if any. Skip the close-emits-reconnect loop by
+      // dropping our reference first.
       if (this.client) {
         const oldClient = this.client;
         this.client = null;
-        this.connected = false;
         try {
           await this._closeClient(oldClient);
         } catch (err) {
           console.log('Error closing existing connection:', err.message);
         }
-        // Brief grace for the Marstek to register the slot as free before we
-        // claim it again. On devices with native Modbus TCP this prevents
-        // the new socket from being rejected (or accepted-then-dropped).
-        await new Promise((resolve) => setTimeout(resolve, ModbusClient.CLOSE_GRACE_MS));
       }
 
       this.client = new ModbusRTU();
@@ -174,12 +104,6 @@ class ModbusClient extends EventEmitter {
       return true;
     } catch (error) {
       this.connected = false;
-      // If our half-open ModbusRTU is around, make sure it does not survive.
-      if (this.client) {
-        const failedClient = this.client;
-        this.client = null;
-        this._closeClient(failedClient).catch(() => {});
-      }
       this.emit('error', error);
       return false;
     }
@@ -250,14 +174,6 @@ class ModbusClient extends EventEmitter {
 
     this.reconnectInterval = setTimeout(async () => {
       this.reconnectInterval = null;
-      // If another path already opened a connection between scheduling and
-      // firing (e.g. a user write triggered connectModbus), do not start a
-      // second one - connect() would idempotently no-op anyway, but skipping
-      // here avoids the noisy "Attempting reconnection" log line.
-      if (this.connected || this._connectPromise) {
-        this.isReconnecting = false;
-        return;
-      }
       if (this.config) {
         console.log(`Attempting reconnection (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
         const success = await this.connect(this.config);
@@ -278,7 +194,7 @@ class ModbusClient extends EventEmitter {
     }
   }
 
-  async forceReconnect() {
+  forceReconnect() {
     console.log('Forcing immediate reconnection');
 
     this.clearReconnectInterval();
@@ -288,113 +204,94 @@ class ModbusClient extends EventEmitter {
     this.client = null;
     this.connected = false;
 
-    // Actually wait for the old socket to be fully torn down before claiming
-    // the device's slot again - the whole point of a forced reconnect.
-    try {
-      await this._closeClient(oldClient);
-    } catch (e) {
-      // best-effort: continue regardless
-    }
-    await new Promise((resolve) => setTimeout(resolve, ModbusClient.CLOSE_GRACE_MS));
+    this._closeClient(oldClient).catch(() => {});
 
-    if (this.config) {
-      return this.connect(this.config);
-    }
-    return false;
+    // Small delay for cleanup before reconnecting.
+    setTimeout(() => {
+      if (this.config) {
+        this.connect(this.config);
+      }
+    }, 1000);
   }
 
   async readHoldingRegisters(slaveId, address, quantity, retries = 2) {
-    return this._serialize(async () => {
-      if (!this.connected || !this.client) {
-        throw new Error('Modbus not connected');
-      }
+    if (!this.connected || !this.client) {
+      throw new Error('Modbus not connected');
+    }
 
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          this.client.setID(slaveId || 1);
-          const response = await this.client.readHoldingRegisters(address, quantity);
-          this._hasEverSucceeded = true;
-          // Preserve the modbus-stream return shape (array of buffers) so
-          // existing device.js callers that do Buffer.concat([...]) keep working.
-          return [response.buffer];
-        } catch (err) {
-          const { tag } = this._classifyError(err);
-          if (attempt < retries && this.connected) {
-            console.log(`${tag} Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
-            await new Promise(resolve => setTimeout(resolve, 500));
-          } else {
-            throw err;
-          }
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        this.client.setID(slaveId || 1);
+        const response = await this.client.readHoldingRegisters(address, quantity);
+        this._hasEverSucceeded = true;
+        // Preserve the modbus-stream return shape (array of buffers) so
+        // existing device.js callers that do Buffer.concat([...]) keep working.
+        return [response.buffer];
+      } catch (err) {
+        const { tag } = this._classifyError(err);
+        if (attempt < retries && this.connected) {
+          console.log(`${tag} Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          throw err;
         }
       }
-    });
+    }
   }
 
   async writeSingleRegister(slaveId, address, value, retries = 2) {
-    return this._serialize(async () => {
-      if (!this.connected || !this.client) {
-        throw new Error('Modbus not connected');
-      }
+    if (!this.connected || !this.client) {
+      throw new Error('Modbus not connected');
+    }
 
-      for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-          this.client.setID(slaveId || 1);
-          await this.client.writeRegister(address, value);
-          this._hasEverSucceeded = true;
-          return;
-        } catch (err) {
-          const { tag } = this._classifyError(err);
-          if (attempt < retries && this.connected) {
-            console.log(`${tag} Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
-            await new Promise(resolve => setTimeout(resolve, 500));
-          } else {
-            throw err;
-          }
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        this.client.setID(slaveId || 1);
+        await this.client.writeRegister(address, value);
+        this._hasEverSucceeded = true;
+        return;
+      } catch (err) {
+        const { tag } = this._classifyError(err);
+        if (attempt < retries && this.connected) {
+          console.log(`${tag} Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          throw err;
         }
       }
-    });
+    }
   }
 
   async writeMultipleRegisters(slaveId, address, values) {
-    return this._serialize(async () => {
-      if (!this.connected || !this.client) {
-        throw new Error('Modbus not connected');
-      }
+    if (!this.connected || !this.client) {
+      throw new Error('Modbus not connected');
+    }
 
-      // modbus-serial expects an array of 16-bit integers. Accept either numbers
-      // or 2-byte Buffers for backwards compat with the old Buffer[] API.
-      const regs = values.map((v) => {
-        if (Buffer.isBuffer(v)) return v.readUInt16BE(0);
-        return v;
-      });
-
-      this.client.setID(slaveId || 1);
-      await this.client.writeRegisters(address, regs);
-      this._hasEverSucceeded = true;
+    // modbus-serial expects an array of 16-bit integers. Accept either numbers
+    // or 2-byte Buffers for backwards compat with the old Buffer[] API.
+    const regs = values.map((v) => {
+      if (Buffer.isBuffer(v)) return v.readUInt16BE(0);
+      return v;
     });
+
+    this.client.setID(slaveId || 1);
+    await this.client.writeRegisters(address, regs);
+    this._hasEverSucceeded = true;
   }
 
   isConnected() {
     return this.connected;
   }
 
-  async disconnect() {
+  disconnect() {
     this.clearReconnectInterval();
-    this.isReconnecting = false;
 
     const oldClient = this.client;
     this.client = null;
     this.connected = false;
     this.config = null;
 
-    // Properly await the close so a caller that disconnects then immediately
-    // creates a new ModbusClient (or this same one is reused) does not race
-    // with a still-in-flight FIN/ACK.
-    try {
-      await this._closeClient(oldClient);
-    } catch (e) {
-      // best-effort: nothing useful to do
-    }
+    this._closeClient(oldClient).catch(() => {});
   }
 
   // Utility functions
