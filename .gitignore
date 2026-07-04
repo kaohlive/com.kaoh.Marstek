@@ -1,3 +1,6 @@
 /env.json
 /node_modules/
 /.homeybuild/
+/documentation/duravolt.txt
+/documentation/duravolt_raw.txt
+/documentation/marstek_api.txt
