@@ -442,14 +442,23 @@ class VenusDDevice extends Homey.Device {
 
       // AC output current at register 32201, signed 16-bit.
       // Scaling is 0.001 A per raw unit, NOT 0.01 as the community-scanned
-      // datasheet documents. Confirmed empirically: tester screenshots on
-      // Venus D firmware v149 read 23.9 A with 0.01 scaling, whereas the
-      // same tester's earlier screenshots on the venus driver (which
-      // classifies VNSD-0 as v3 and applies 0.001) showed 2.39 A - exactly
-      // 10x less, so the raw register value is in tenths of milliamps here.
-      // The community datasheet was scanned on firmware v153 which may
-      // have a different scaling; if a v153+ tester ever reports 100x too
-      // low, branch on firmware.
+      // datasheet documents.
+      //
+      // The physics rules 0.01 out on this hardware regardless of what any
+      // datasheet says: the Marstek Venus D inverter is spec'd at 2500 W
+      // max AC output, so at 230 V grid the physical current ceiling is
+      // 2500 / 230 = 10.87 A. Tester screenshots on firmware v149 read
+      // 23.9 A with 0.01 scaling - that would imply 5500 W AC output,
+      // more than 2x above the inverter's rated max. Impossible.
+      // With 0.001 scaling the same raw value yields 2.39 A / 550 W,
+      // which matches the tester's earlier venus-driver screenshots (the
+      // venus driver classifies VNSD-0 as v3 and already applies 0.001)
+      // and sits comfortably inside the inverter envelope.
+      //
+      // The community datasheet was scanned on firmware v153; if Marstek
+      // changed the raw representation between v149 and v153, a future
+      // v153+ tester may need branch-on-firmware logic. Until we have
+      // that data, 0.001 is the physics-defensible choice.
       const reg_current_ac = await this.modbus.readHoldingRegisters(slaveId, 32201, 1);
       const current_ac = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac)) * 0.001;
       this.setCapabilityValue('measure_current', current_ac).catch(this.error);
