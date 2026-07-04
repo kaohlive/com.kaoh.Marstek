@@ -440,10 +440,18 @@ class VenusDDevice extends Homey.Device {
       const voltage_ac = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage_ac)) * 0.1;
       this.setCapabilityValue('measure_voltage', voltage_ac).catch(this.error);
 
-      // AC output current (0.01A, signed) - Venus D uses same 0.01
-      // scaling as V1/V2 per the datasheet - no V3-style 0.001 scaling.
+      // AC output current at register 32201, signed 16-bit.
+      // Scaling is 0.001 A per raw unit, NOT 0.01 as the community-scanned
+      // datasheet documents. Confirmed empirically: tester screenshots on
+      // Venus D firmware v149 read 23.9 A with 0.01 scaling, whereas the
+      // same tester's earlier screenshots on the venus driver (which
+      // classifies VNSD-0 as v3 and applies 0.001) showed 2.39 A - exactly
+      // 10x less, so the raw register value is in tenths of milliamps here.
+      // The community datasheet was scanned on firmware v153 which may
+      // have a different scaling; if a v153+ tester ever reports 100x too
+      // low, branch on firmware.
       const reg_current_ac = await this.modbus.readHoldingRegisters(slaveId, 32201, 1);
-      const current_ac = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac)) * 0.01;
+      const current_ac = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac)) * 0.001;
       this.setCapabilityValue('measure_current', current_ac).catch(this.error);
 
       // AC power (int32 W). Homey convention: positive = export to grid,
