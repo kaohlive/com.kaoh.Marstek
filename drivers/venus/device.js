@@ -573,6 +573,11 @@ async writeDeviceName(name, config) {
 
     try {
       const slaveId = this.settings.slave_id || 1;
+      // Per-cycle read counters used by _readSafe. Judged at the end of this
+      // poll to decide whether the cycle counts as a partial success or a
+      // full failure.
+      this._pollReadsOk = 0;
+      this._pollReadsFail = 0;
       console.log('Attempt to read registers for slave device ['+slaveId+']')
       // Read battery status registers (example addresses based on typical battery systems)
       console.log('Get battery data [slave '+slaveId+']')
@@ -585,10 +590,23 @@ async writeDeviceName(name, config) {
       console.log('Get system data [slave '+slaveId+']')
       await this.processSystemData(slaveId);
 
-      // Successful poll - reset error counter and ensure device is marked available
-      this.consecutiveErrors = 0;
-      if (!this._isDeleted && !this.getAvailable()) {
-        this._setAvailableSafe();
+      // Partial reads (some succeed, some fail) count as success - stale on a
+      // few caps is better than skipping the whole cycle. Only a fully-empty
+      // cycle counts as a polling failure.
+      if (this._pollReadsOk > 0) {
+        if (this._pollReadsFail > 0) {
+          this.log(`Partial poll: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed`);
+        }
+        this.consecutiveErrors = 0;
+        if (!this._isDeleted && !this.getAvailable()) {
+          this._setAvailableSafe();
+        }
+      } else {
+        this.consecutiveErrors++;
+        this.log(`Poll produced no data (${this._pollReadsFail} reads failed) (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+        if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
+          this._setUnavailableSafe(`Polling produced no data for ${this.maxConsecutiveErrors} cycles`);
+        }
       }
 
     } catch (error) {
@@ -602,68 +620,91 @@ async writeDeviceName(name, config) {
     }
   }
 
+  // Read a Modbus holding register with error isolation. Returns the buffer
+  // array on success or null on failure, and updates the per-cycle counters
+  // so pollData can distinguish partial from full failures. Prevents a single
+  // register timeout from throwing out of a process* block and skipping every
+  // subsequent read.
+  async _readSafe(slaveId, address, count, label) {
+    try {
+      const buf = await this.modbus.readHoldingRegisters(slaveId, address, count);
+      this._pollReadsOk++;
+      return buf;
+    } catch (err) {
+      this._pollReadsFail++;
+      const msg = (err && err.message) ? err.message : String(err);
+      this.log(`Register ${address} (${label}) read failed: ${msg}`);
+      return null;
+    }
+  }
+
   async processBatteryState(slaveId) {
     try {
       // AC Output voltage (0.1V resolution)
-      const reg_voltage_ac =await this.modbus.readHoldingRegisters(slaveId, 32200, 1);
-      const voltage_ac = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage_ac)) * 0.1;
-      this.setCapabilityValue('measure_voltage', voltage_ac).catch(this.error);
+      const reg_voltage_ac = await this._readSafe(slaveId, 32200, 1, 'AC voltage');
+      if (reg_voltage_ac) {
+        const voltage_ac = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage_ac)) * 0.1;
+        this.setCapabilityValue('measure_voltage', voltage_ac).catch(this.error);
+      }
+
       // AC Output current (0.1A resolution, signed) - V3 devices use different scaling
-      const reg_current_ac = await this.modbus.readHoldingRegisters(slaveId, 32201, 1);
-      const current_ac_raw = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac));
-      // Different scaling for different device versions
-      let current_ac;
-      if (this.deviceVersion === 'v3') {
-        current_ac = current_ac_raw * 0.001; // V3 devices use 0.001 scaling
-      } else {
-        current_ac = current_ac_raw * 0.01; // V1 and V2 devices use 0.01 scaling
+      const reg_current_ac = await this._readSafe(slaveId, 32201, 1, 'AC current');
+      if (reg_current_ac) {
+        const current_ac_raw = ModbusClient.bufferToInt16(Buffer.concat(reg_current_ac));
+        const current_ac = this.deviceVersion === 'v3'
+          ? current_ac_raw * 0.001
+          : current_ac_raw * 0.01;
+        this.setCapabilityValue('measure_current', current_ac).catch(this.error);
       }
-      this.setCapabilityValue('measure_current', current_ac).catch(this.error);
-      //AC power output, this is the main interaction between our house and the ESS
-      const reg_power_ac = await this.modbus.readHoldingRegisters(slaveId, 32202, 2);
-      const power_ac = ModbusClient.bufferToInt32(Buffer.concat(reg_power_ac));
-      //For homey we need to invert the power measure
-      this.setCapabilityValue('measure_power', (power_ac*-1)).catch(this.error);
-      //But we also set the discharge and charge versions for easy of use
-      if (power_ac < 0) {
-        this.setCapabilityValue('measure_power.imported', Math.abs(power_ac)).catch(this.error);
-        this.setCapabilityValue('measure_power.exported', 0).catch(this.error);
-      } else {
-        this.setCapabilityValue('measure_power.imported', 0).catch(this.error);
-        this.setCapabilityValue('measure_power.exported', Math.abs(power_ac)).catch(this.error);
+
+      // AC power output, main interaction between the house and the ESS
+      const reg_power_ac = await this._readSafe(slaveId, 32202, 2, 'AC power');
+      if (reg_power_ac) {
+        const power_ac = ModbusClient.bufferToInt32(Buffer.concat(reg_power_ac));
+        // Homey convention: inverted sign
+        this.setCapabilityValue('measure_power', (power_ac * -1)).catch(this.error);
+        if (power_ac < 0) {
+          this.setCapabilityValue('measure_power.imported', Math.abs(power_ac)).catch(this.error);
+          this.setCapabilityValue('measure_power.exported', 0).catch(this.error);
+        } else {
+          this.setCapabilityValue('measure_power.imported', 0).catch(this.error);
+          this.setCapabilityValue('measure_power.exported', Math.abs(power_ac)).catch(this.error);
+        }
       }
+
       // State of Charge (1% resolution)
-      const reg_soc = await this.modbus.readHoldingRegisters(slaveId, 32104, 1);
-      const soc=ModbusClient.bufferToUint16(Buffer.concat(reg_soc));
-      this.setCapabilityValue('measure_battery', soc).catch(this.error);
-      const stored_energy = this.batteryCapacity * (soc/100);
-      this.setCapabilityValue('meter_power.capacity', stored_energy).catch(this.error);
-      
-      // Trigger SOC events
-      this.triggerSOCEvents(soc);
-
-      // Battery power, these are internal pre inverter values (1W resolution, signed)
-      const reg_power = await this.modbus.readHoldingRegisters(slaveId, 32102, 2);
-      const power = ModbusClient.bufferToInt32(Buffer.concat(reg_power)); //Homey want w
-      
-      //First we set the main measure capability
-      this.setCapabilityValue('measure_power.battery', power).catch(this.error);
-      // Battery voltage (0.1V resolution)
-      const reg_voltage =await this.modbus.readHoldingRegisters(slaveId, 32100, 1);
-      const voltage = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage)) * 0.01;
-      this.setCapabilityValue('measure_voltage.battery', voltage).catch(this.error);
-
-      // Battery current (0.1A resolution, signed) - V3 devices use different scaling
-      const reg_current = await this.modbus.readHoldingRegisters(slaveId, 32101, 1);
-      const current_raw = ModbusClient.bufferToInt16(Buffer.concat(reg_current));
-      // Different scaling for different device versions
-      let current;
-      if (this.deviceVersion === 'v3') {
-        current = current_raw * 0.001; // V3 devices use 0.001 scaling
-      } else {
-        current = current_raw * 0.01; // V1 and V2 devices use 0.01 scaling
+      const reg_soc = await this._readSafe(slaveId, 32104, 1, 'SOC');
+      if (reg_soc) {
+        const soc = ModbusClient.bufferToUint16(Buffer.concat(reg_soc));
+        this.setCapabilityValue('measure_battery', soc).catch(this.error);
+        const stored_energy = this.batteryCapacity * (soc / 100);
+        this.setCapabilityValue('meter_power.capacity', stored_energy).catch(this.error);
+        this.triggerSOCEvents(soc);
       }
-      this.setCapabilityValue('measure_current.battery', current).catch(this.error);
+
+      // Battery power (internal pre-inverter, 1W resolution, signed)
+      const reg_power = await this._readSafe(slaveId, 32102, 2, 'battery power');
+      if (reg_power) {
+        const power = ModbusClient.bufferToInt32(Buffer.concat(reg_power));
+        this.setCapabilityValue('measure_power.battery', power).catch(this.error);
+      }
+
+      // Battery voltage (0.1V resolution)
+      const reg_voltage = await this._readSafe(slaveId, 32100, 1, 'battery voltage');
+      if (reg_voltage) {
+        const voltage = ModbusClient.bufferToUint16(Buffer.concat(reg_voltage)) * 0.01;
+        this.setCapabilityValue('measure_voltage.battery', voltage).catch(this.error);
+      }
+
+      // Battery current (signed) - V3 devices use different scaling
+      const reg_current = await this._readSafe(slaveId, 32101, 1, 'battery current');
+      if (reg_current) {
+        const current_raw = ModbusClient.bufferToInt16(Buffer.concat(reg_current));
+        const current = this.deviceVersion === 'v3'
+          ? current_raw * 0.001
+          : current_raw * 0.01;
+        this.setCapabilityValue('measure_current.battery', current).catch(this.error);
+      }
 
     } catch (error) {
       this.log('Error processing battery state:', error);
@@ -673,25 +714,32 @@ async writeDeviceName(name, config) {
   async processBatteryHealth(slaveId) {
     try {
       // Internal Temperature
-      const reg_temp_int =await this.modbus.readHoldingRegisters(slaveId, 35000, 1);
-      const temp_int = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_int)) * 0.1;
-      this.setCapabilityValue('measure_temperature', temp_int).catch(this.error);
+      const reg_temp_int = await this._readSafe(slaveId, 35000, 1, 'internal temperature');
+      if (reg_temp_int) {
+        const temp_int = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_int)) * 0.1;
+        this.setCapabilityValue('measure_temperature', temp_int).catch(this.error);
+      }
 
-      // Internal mos1
-      const reg_temp_mos1 =await this.modbus.readHoldingRegisters(slaveId, 35001, 1);
-      const temp_mos1 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos1)) * 0.1;
-      this.setCapabilityValue('measure_temperature.mos1', temp_mos1).catch(this.error);
-      // Internal mos1
-      const reg_temp_mos2 =await this.modbus.readHoldingRegisters(slaveId, 35002, 1);
-      const temp_mos2 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos2)) * 0.1;
-      this.setCapabilityValue('measure_temperature.mos2', temp_mos2).catch(this.error);
+      // MOS1 temperature
+      const reg_temp_mos1 = await this._readSafe(slaveId, 35001, 1, 'MOS1 temperature');
+      if (reg_temp_mos1) {
+        const temp_mos1 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos1)) * 0.1;
+        this.setCapabilityValue('measure_temperature.mos1', temp_mos1).catch(this.error);
+      }
 
-      // Process alarm and fault codes, but they dont seem to work for v3
+      // MOS2 temperature
+      const reg_temp_mos2 = await this._readSafe(slaveId, 35002, 1, 'MOS2 temperature');
+      if (reg_temp_mos2) {
+        const temp_mos2 = ModbusClient.bufferToInt16(Buffer.concat(reg_temp_mos2)) * 0.1;
+        this.setCapabilityValue('measure_temperature.mos2', temp_mos2).catch(this.error);
+      }
+
+      // Process alarm and fault codes, but they don't seem to work for v3
       if (this.deviceVersion !== 'v3') {
         await this.processAlarmCodes(slaveId);
       }
     } catch (error) {
-      this.log('Error processing battery state:', error);
+      this.log('Error processing battery health:', error);
     }
   }
 
@@ -699,189 +747,208 @@ async writeDeviceName(name, config) {
 
     try {
 
-      // Battery total chargin energy (0.001kwh resolution)
-      const reg_total_charge_energy = await this.modbus.readHoldingRegisters(slaveId, 33000, 2);
-      const total_charge_energy = ModbusClient.bufferToUint32(Buffer.concat(reg_total_charge_energy)) * 0.01; // Now in kwh
-      this.setCapabilityValue('meter_power.imported', total_charge_energy).catch(this.error);
+      // Battery total charging energy (0.001kwh resolution)
+      const reg_total_charge_energy = await this._readSafe(slaveId, 33000, 2, 'total charge energy');
+      if (reg_total_charge_energy) {
+        const total_charge_energy = ModbusClient.bufferToUint32(Buffer.concat(reg_total_charge_energy)) * 0.01;
+        this.setCapabilityValue('meter_power.imported', total_charge_energy).catch(this.error);
+      }
 
       // Battery total discharge energy (0.001kwh resolution)
-      const reg_total_discharge_energy = await this.modbus.readHoldingRegisters(slaveId, 33002, 2);
-      const total_discharge_energy = ModbusClient.bufferToInt32(Buffer.concat(reg_total_discharge_energy)) * 0.01; // Now in kwh
-      this.setCapabilityValue('meter_power.exported', total_discharge_energy).catch(this.error);
-
-      // Inverter state
-      const reg_inverter_state = await this.modbus.readHoldingRegisters(slaveId, 35100, 1);
-      const inverter_state = ModbusClient.bufferToUint16(Buffer.concat(reg_inverter_state));
-      this.log('Device inverstate: '+inverter_state)
-      const modeStr = this.driver.INVERTER_MODES[inverter_state];
-      // Trigger operation mode change event
-      const previousMode = this.getCapabilityValue('operation_mode');
-      this.log('Previous mode: '+previousMode+' - New mode: '+modeStr);
-      // Guard: some firmware versions return inverter_state values outside
-      // our known map (e.g. transient values, undocumented states). Skip
-      // the capability write rather than crash with "Expected string, got
-      // undefined".
-      if (modeStr === undefined) {
-        this.log(`Unknown inverter state ${inverter_state} - not updating operation_mode`);
-      } else if (previousMode !== modeStr) {
-        this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
-
-        // Trigger operation mode change event only after value is set and if there was a previous value
-        if (previousMode) {
-          this.homey.flow.getDeviceTriggerCard('operation_mode_changed')
-            .trigger(this, { mode: modeStr, prevMode: previousMode })
-            .catch(this.error);
-        }
+      const reg_total_discharge_energy = await this._readSafe(slaveId, 33002, 2, 'total discharge energy');
+      if (reg_total_discharge_energy) {
+        const total_discharge_energy = ModbusClient.bufferToInt32(Buffer.concat(reg_total_discharge_energy)) * 0.01;
+        this.setCapabilityValue('meter_power.exported', total_discharge_energy).catch(this.error);
       }
-      //Force mode
-      const reg_force_mode = await this.modbus.readHoldingRegisters(slaveId, 42010, 1);
-      const force_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode));
-      const forceModeStr = this.driver.FORCE_MODES[force_mode];
-      console.log('current charge mode forced :'+force_mode);
 
-      // Only set capability if value changed to prevent unnecessary triggers
-      // Preserve force_soc mode: register 42010 reads 0 (none) when force_soc is active
-      // because force_soc is managed via register 42011, not 42010.
-      // Preserve target_power mode: when the user drives via target_power the register
-      // reads force_charge/force_discharge, but we want the unified label to stick.
-      const currentForceMode = this.getCapabilityValue('force_charge_mode');
-      let displayForceMode = forceModeStr;
-      if (currentForceMode === 'target_power' && (forceModeStr === 'force_charge' || forceModeStr === 'force_discharge')) {
-        displayForceMode = 'target_power';
-      }
-      // Guard: skip write if force_mode is outside our known map (same
-      // firmware-return-out-of-range issue as operation_mode above).
-      // displayForceMode is kept in scope for downstream use (e.g.
-      // forceSocActive derivation).
-      if (forceModeStr === undefined) {
-        this.log(`Unknown force mode ${force_mode} - not updating force_charge_mode`);
-      } else if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
-        // Don't overwrite - force_soc is active via SOC target register
-      } else if (currentForceMode !== displayForceMode) {
-        this.setCapabilityValue('force_charge_mode', displayForceMode).catch(this.error);
-      }
-      //Work mode
-      const reg_work_mode = await this.modbus.readHoldingRegisters(slaveId, 43000, 1);
-      let work_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
-      const reg_force_mode_state = await this.modbus.readHoldingRegisters(slaveId, 42000, 1);
-      const force_mode_state = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode_state));
-      console.log('force mode enabled? ('+force_mode_state+'): '+(force_mode_state==21930));
-      if(force_mode_state==21930)
-        work_mode=3;
-      console.log('workmode: '+work_mode);
-      const workModeStr = this.driver.WORK_MODES[work_mode];
-
-      // Diagnostic: for every poll, advance pending work-mode writes so we can
-      // measure how many polls (and ms) it took for the device to expose the
-      // new value via reads. Match logic mirrors the merge in lines above:
-      // when 42000=21930 the effective work_mode is forced to 3 (control_mode),
-      // so we check 42000 for control_mode targets and 43000 for the rest.
-      if (this._pendingWorkModeWrites && this._pendingWorkModeWrites.length > 0) {
-        const rawReg43000 = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
-        const rawReg42000 = force_mode_state;
-        const stillPending = [];
-        for (const pending of this._pendingWorkModeWrites) {
-          pending.pollsObserved++;
-          const reg42Match = rawReg42000 === pending.expectedReg42000;
-          const reg43Match = pending.expectedReg43000 === null
-            ? true
-            : rawReg43000 === pending.expectedReg43000;
-          if (reg42Match && reg43Match) {
-            const latencyMs = Date.now() - pending.writeStartedAt;
-            this._pushModeEvent('write_acked', {
-              seq: pending.seq,
-              target_value: pending.target_value,
-              polls_to_ack: pending.pollsObserved,
-              latency_ms: latencyMs,
-              raw_reg_43000: rawReg43000,
-              raw_reg_42000: rawReg42000,
-            });
-            pending.matched = true;
-          } else if (pending.pollsObserved >= 10) {
-            // Give up after ~50s of polling at the default 5s interval. Record
-            // the timeout so we still capture failed/laggy writes.
-            this._pushModeEvent('write_timeout', {
-              seq: pending.seq,
-              target_value: pending.target_value,
-              polls_observed: pending.pollsObserved,
-              latency_ms: Date.now() - pending.writeStartedAt,
-              raw_reg_43000: rawReg43000,
-              raw_reg_42000: rawReg42000,
-            });
-          } else {
-            this._pushModeEvent('poll_pending', {
-              seq: pending.seq,
-              poll_index: pending.pollsObserved,
-              raw_reg_43000: rawReg43000,
-              raw_reg_42000: rawReg42000,
-            });
-            stillPending.push(pending);
+      // Inverter state. modeStr is exposed to the derivation blocks below so
+      // they only run when this cycle's read succeeded.
+      let modeStr;
+      const reg_inverter_state = await this._readSafe(slaveId, 35100, 1, 'inverter state');
+      if (reg_inverter_state) {
+        const inverter_state = ModbusClient.bufferToUint16(Buffer.concat(reg_inverter_state));
+        this.log('Device inverstate: ' + inverter_state);
+        modeStr = this.driver.INVERTER_MODES[inverter_state];
+        const previousMode = this.getCapabilityValue('operation_mode');
+        this.log('Previous mode: ' + previousMode + ' - New mode: ' + modeStr);
+        // Guard: some firmware versions return inverter_state values outside
+        // our known map. Skip the capability write rather than crash with
+        // "Expected string, got undefined".
+        if (modeStr === undefined) {
+          this.log(`Unknown inverter state ${inverter_state} - not updating operation_mode`);
+        } else if (previousMode !== modeStr) {
+          this.setCapabilityValue('operation_mode', modeStr).catch(this.error);
+          if (previousMode) {
+            this.homey.flow.getDeviceTriggerCard('operation_mode_changed')
+              .trigger(this, { mode: modeStr, prevMode: previousMode })
+              .catch(this.error);
           }
         }
-        this._pendingWorkModeWrites = stillPending;
       }
 
-      // Only set capability if value changed to prevent unnecessary triggers.
-      // Guard against out-of-range work_mode values from firmware.
-      if (workModeStr === undefined) {
-        this.log(`Unknown work mode ${work_mode} - not updating user_work_mode`);
-      } else {
-        const currentWorkMode = this.getCapabilityValue('user_work_mode');
-        if (currentWorkMode !== workModeStr) {
-          this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+      // Force mode. forceModeStr / displayForceMode are used in the target_power
+      // and onoff derivations below.
+      let forceModeStr;
+      let displayForceMode;
+      const reg_force_mode = await this._readSafe(slaveId, 42010, 1, 'force mode');
+      if (reg_force_mode) {
+        const force_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode));
+        forceModeStr = this.driver.FORCE_MODES[force_mode];
+        console.log('current charge mode forced :' + force_mode);
+
+        // Preserve force_soc mode: register 42010 reads 0 (none) when force_soc is active
+        // because force_soc is managed via register 42011, not 42010.
+        // Preserve target_power mode: when the user drives via target_power the register
+        // reads force_charge/force_discharge, but we want the unified label to stick.
+        const currentForceMode = this.getCapabilityValue('force_charge_mode');
+        displayForceMode = forceModeStr;
+        if (currentForceMode === 'target_power' && (forceModeStr === 'force_charge' || forceModeStr === 'force_discharge')) {
+          displayForceMode = 'target_power';
+        }
+        if (forceModeStr === undefined) {
+          this.log(`Unknown force mode ${force_mode} - not updating force_charge_mode`);
+        } else if (currentForceMode === 'force_soc' && forceModeStr === 'none') {
+          // Don't overwrite - force_soc is active via SOC target register
+        } else if (currentForceMode !== displayForceMode) {
+          this.setCapabilityValue('force_charge_mode', displayForceMode).catch(this.error);
         }
       }
-      //Process charging status from operation mode
-      this.processChargingStatus(modeStr);
-      //Get current force SOC target
-      const reg_force_soc = await this.modbus.readHoldingRegisters(slaveId, 42011, 1);
-      const force_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_force_soc));
-      console.log('Force charge target: '+force_soc+'%')
 
-      // Only set capability if value changed to prevent unnecessary triggers
-      const currentForceTarget = this.getCapabilityValue('force_charge_target');
-      if (currentForceTarget !== force_soc) {
-        this.setCapabilityValue('force_charge_target', force_soc).catch(this.error);
+      // Work mode. Requires BOTH 43000 and 42000 - the 42000=21930 magic
+      // number overrides work_mode to control_mode. If either read fails we
+      // can't derive a trustworthy work mode so we skip the block.
+      let workModeStr;
+      const reg_work_mode = await this._readSafe(slaveId, 43000, 1, 'work mode');
+      const reg_force_mode_state = await this._readSafe(slaveId, 42000, 1, 'force mode state');
+      if (reg_work_mode && reg_force_mode_state) {
+        let work_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
+        const force_mode_state = ModbusClient.bufferToUint16(Buffer.concat(reg_force_mode_state));
+        console.log('force mode enabled? (' + force_mode_state + '): ' + (force_mode_state == 21930));
+        if (force_mode_state == 21930)
+          work_mode = 3;
+        console.log('workmode: ' + work_mode);
+        workModeStr = this.driver.WORK_MODES[work_mode];
+
+        // Diagnostic: advance pending work-mode writes so we can measure how
+        // many polls (and ms) it took for the device to expose the new value
+        // via reads. Match logic mirrors the merge above: when 42000=21930 the
+        // effective work_mode is forced to 3 (control_mode), so we check 42000
+        // for control_mode targets and 43000 for the rest.
+        if (this._pendingWorkModeWrites && this._pendingWorkModeWrites.length > 0) {
+          const rawReg43000 = ModbusClient.bufferToUint16(Buffer.concat(reg_work_mode));
+          const rawReg42000 = force_mode_state;
+          const stillPending = [];
+          for (const pending of this._pendingWorkModeWrites) {
+            pending.pollsObserved++;
+            const reg42Match = rawReg42000 === pending.expectedReg42000;
+            const reg43Match = pending.expectedReg43000 === null
+              ? true
+              : rawReg43000 === pending.expectedReg43000;
+            if (reg42Match && reg43Match) {
+              const latencyMs = Date.now() - pending.writeStartedAt;
+              this._pushModeEvent('write_acked', {
+                seq: pending.seq,
+                target_value: pending.target_value,
+                polls_to_ack: pending.pollsObserved,
+                latency_ms: latencyMs,
+                raw_reg_43000: rawReg43000,
+                raw_reg_42000: rawReg42000,
+              });
+              pending.matched = true;
+            } else if (pending.pollsObserved >= 10) {
+              // Give up after ~50s of polling at the default 5s interval.
+              this._pushModeEvent('write_timeout', {
+                seq: pending.seq,
+                target_value: pending.target_value,
+                polls_observed: pending.pollsObserved,
+                latency_ms: Date.now() - pending.writeStartedAt,
+                raw_reg_43000: rawReg43000,
+                raw_reg_42000: rawReg42000,
+              });
+            } else {
+              this._pushModeEvent('poll_pending', {
+                seq: pending.seq,
+                poll_index: pending.pollsObserved,
+                raw_reg_43000: rawReg43000,
+                raw_reg_42000: rawReg42000,
+              });
+              stillPending.push(pending);
+            }
+          }
+          this._pendingWorkModeWrites = stillPending;
+        }
+
+        // Only set capability if value changed to prevent unnecessary triggers.
+        // Guard against out-of-range work_mode values from firmware.
+        if (workModeStr === undefined) {
+          this.log(`Unknown work mode ${work_mode} - not updating user_work_mode`);
+        } else {
+          const currentWorkMode = this.getCapabilityValue('user_work_mode');
+          if (currentWorkMode !== workModeStr) {
+            this.setCapabilityValue('user_work_mode', workModeStr).catch(this.error);
+          }
+        }
       }
-      //Get current backup mode
-      const reg_backup_mode = await this.modbus.readHoldingRegisters(slaveId, 41200, 1);
-      const backup_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_backup_mode));
-      const backupModeValue = (backup_mode==0);
-      console.log('Backup Mode: '+backupModeValue)
 
-      // Only set capability if value changed to prevent unnecessary triggers
-      const currentBackupMode = this.getCapabilityValue('backup_mode');
-      if (currentBackupMode !== backupModeValue) {
-        this.setCapabilityValue('backup_mode', backupModeValue).catch(this.error);
+      // Charging status derived from operation mode - skip if 35100 read failed
+      // this cycle. Prev cycle's battery_charging_state stays until next successful read.
+      if (modeStr !== undefined) {
+        this.processChargingStatus(modeStr);
       }
 
-      // Read max charge power limit (register 44002) - device protection limit
-      const reg_max_charge_power = await this.modbus.readHoldingRegisters(slaveId, 44002, 1);
-      const max_charge_power = ModbusClient.bufferToUint16(Buffer.concat(reg_max_charge_power));
-      console.log('Max charge power limit: ' + max_charge_power + 'W');
-
-      // Only set capability if value changed to prevent unnecessary triggers
-      const currentMaxChargePower = this.getCapabilityValue('max_charge_power_limit');
-      if (currentMaxChargePower !== max_charge_power) {
-        this.setCapabilityValue('max_charge_power_limit', max_charge_power).catch(this.error);
+      // Force SOC target
+      const reg_force_soc = await this._readSafe(slaveId, 42011, 1, 'force SOC target');
+      if (reg_force_soc) {
+        const force_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_force_soc));
+        console.log('Force charge target: ' + force_soc + '%');
+        const currentForceTarget = this.getCapabilityValue('force_charge_target');
+        if (currentForceTarget !== force_soc) {
+          this.setCapabilityValue('force_charge_target', force_soc).catch(this.error);
+        }
       }
 
-      // Read max discharge power limit (register 44003) - device protection limit
-      const reg_max_discharge_power = await this.modbus.readHoldingRegisters(slaveId, 44003, 1);
-      const max_discharge_power = ModbusClient.bufferToUint16(Buffer.concat(reg_max_discharge_power));
-      console.log('Max discharge power limit: ' + max_discharge_power + 'W');
+      // Backup mode
+      const reg_backup_mode = await this._readSafe(slaveId, 41200, 1, 'backup mode');
+      if (reg_backup_mode) {
+        const backup_mode = ModbusClient.bufferToUint16(Buffer.concat(reg_backup_mode));
+        const backupModeValue = (backup_mode == 0);
+        console.log('Backup Mode: ' + backupModeValue);
+        const currentBackupMode = this.getCapabilityValue('backup_mode');
+        if (currentBackupMode !== backupModeValue) {
+          this.setCapabilityValue('backup_mode', backupModeValue).catch(this.error);
+        }
+      }
 
-      // Only set capability if value changed to prevent unnecessary triggers
-      const currentMaxDischargePower = this.getCapabilityValue('max_discharge_power_limit');
-      if (currentMaxDischargePower !== max_discharge_power) {
-        this.setCapabilityValue('max_discharge_power_limit', max_discharge_power).catch(this.error);
+      // Max charge power limit (register 44002) - device protection limit
+      const reg_max_charge_power = await this._readSafe(slaveId, 44002, 1, 'max charge power');
+      if (reg_max_charge_power) {
+        const max_charge_power = ModbusClient.bufferToUint16(Buffer.concat(reg_max_charge_power));
+        console.log('Max charge power limit: ' + max_charge_power + 'W');
+        const currentMaxChargePower = this.getCapabilityValue('max_charge_power_limit');
+        if (currentMaxChargePower !== max_charge_power) {
+          this.setCapabilityValue('max_charge_power_limit', max_charge_power).catch(this.error);
+        }
+      }
+
+      // Max discharge power limit (register 44003) - device protection limit
+      const reg_max_discharge_power = await this._readSafe(slaveId, 44003, 1, 'max discharge power');
+      if (reg_max_discharge_power) {
+        const max_discharge_power = ModbusClient.bufferToUint16(Buffer.concat(reg_max_discharge_power));
+        console.log('Max discharge power limit: ' + max_discharge_power + 'W');
+        const currentMaxDischargePower = this.getCapabilityValue('max_discharge_power_limit');
+        if (currentMaxDischargePower !== max_discharge_power) {
+          this.setCapabilityValue('max_discharge_power_limit', max_discharge_power).catch(this.error);
+        }
       }
 
       // Sync target_power slider range to the device's current max charge/discharge
       // limits. Homey requires min<=0<=max, so guard against zeroed readings during
-      // startup by falling back to the hardware ceiling (2500W).
-      const targetMax = max_charge_power > 0 ? max_charge_power : 2500;
-      const targetMin = -(max_discharge_power > 0 ? max_discharge_power : 2500);
+      // startup by falling back to the hardware ceiling (2500W). Uses capability
+      // values so it works with stale data if this cycle's reads failed.
+      const cachedMaxCharge = this.getCapabilityValue('max_charge_power_limit');
+      const cachedMaxDischarge = this.getCapabilityValue('max_discharge_power_limit');
+      const targetMax = cachedMaxCharge > 0 ? cachedMaxCharge : 2500;
+      const targetMin = -(cachedMaxDischarge > 0 ? cachedMaxDischarge : 2500);
       if (this._targetPowerMax !== targetMax || this._targetPowerMin !== targetMin) {
         try {
           await this.setCapabilityOptions('target_power', {
@@ -899,42 +966,54 @@ async writeDeviceName(name, config) {
 
       // Derive target_power from the force registers so Homey's standard
       // energy view reflects the requested setpoint (not the measured power,
-      // which may differ due to SOC cutoffs or thermal limiting).
-      let derivedTargetPower = 0;
-      if (forceModeStr === 'force_charge') {
-        derivedTargetPower = this.getCapabilityValue('force_charge_power') || 0;
-      } else if (forceModeStr === 'force_discharge') {
-        derivedTargetPower = -(this.getCapabilityValue('force_discharge_power') || 0);
-      }
-      const currentTargetPower = this.getCapabilityValue('target_power');
-      if (currentTargetPower !== derivedTargetPower) {
-        this.setCapabilityValue('target_power', derivedTargetPower).catch(this.error);
+      // which may differ due to SOC cutoffs or thermal limiting). Skip if
+      // force mode was not read this cycle - stale target_power beats a wrong
+      // derivation from an unknown force mode.
+      let derivedTargetPower;
+      if (forceModeStr !== undefined) {
+        derivedTargetPower = 0;
+        if (forceModeStr === 'force_charge') {
+          derivedTargetPower = this.getCapabilityValue('force_charge_power') || 0;
+        } else if (forceModeStr === 'force_discharge') {
+          derivedTargetPower = -(this.getCapabilityValue('force_discharge_power') || 0);
+        }
+        const currentTargetPower = this.getCapabilityValue('target_power');
+        if (currentTargetPower !== derivedTargetPower) {
+          this.setCapabilityValue('target_power', derivedTargetPower).catch(this.error);
+        }
       }
 
       // target_power_mode mirrors user_work_mode 1:1, with control_mode → homey.
-      const derivedTargetMode = (workModeStr === 'control_mode') ? 'homey' : workModeStr;
-      const currentTargetMode = this.getCapabilityValue('target_power_mode');
-      if (derivedTargetMode && currentTargetMode !== derivedTargetMode) {
-        this.setCapabilityValue('target_power_mode', derivedTargetMode).catch(this.error);
+      // Skip if work mode was not read this cycle.
+      let derivedTargetMode;
+      if (workModeStr !== undefined) {
+        derivedTargetMode = (workModeStr === 'control_mode') ? 'homey' : workModeStr;
+        const currentTargetMode = this.getCapabilityValue('target_power_mode');
+        if (derivedTargetMode && currentTargetMode !== derivedTargetMode) {
+          this.setCapabilityValue('target_power_mode', derivedTargetMode).catch(this.error);
+        }
       }
 
       // onoff is "off" only when Homey is in full control AND nothing is
       // actively driving the battery: target_power is 0 AND there is no
       // active force_soc SOC target. force_soc is a valid homey-control
-      // strategy that should keep the switch shown as "on".
-      const forceSocActive = displayForceMode === 'force_soc';
-      const derivedOnOff = !(derivedTargetMode === 'homey' && derivedTargetPower === 0 && !forceSocActive);
-      const currentOnOff = this.getCapabilityValue('onoff');
-      if (currentOnOff !== derivedOnOff) {
-        this.setCapabilityValue('onoff', derivedOnOff).catch(this.error);
-      }
-      if (derivedOnOff) {
-        const activeMode = derivedTargetMode || 'anti_feed';
-        if (this.getStoreValue('lastActiveMode') !== activeMode) {
-          this.setStoreValue('lastActiveMode', activeMode).catch(this.error);
+      // strategy that should keep the switch shown as "on". Needs both force
+      // and work mode this cycle to compute correctly.
+      if (forceModeStr !== undefined && workModeStr !== undefined) {
+        const forceSocActive = displayForceMode === 'force_soc';
+        const derivedOnOff = !(derivedTargetMode === 'homey' && derivedTargetPower === 0 && !forceSocActive);
+        const currentOnOff = this.getCapabilityValue('onoff');
+        if (currentOnOff !== derivedOnOff) {
+          this.setCapabilityValue('onoff', derivedOnOff).catch(this.error);
         }
-        if (activeMode === 'homey' && derivedTargetPower !== 0) {
-          this.setStoreValue('lastActivePower', derivedTargetPower).catch(this.error);
+        if (derivedOnOff) {
+          const activeMode = derivedTargetMode || 'anti_feed';
+          if (this.getStoreValue('lastActiveMode') !== activeMode) {
+            this.setStoreValue('lastActiveMode', activeMode).catch(this.error);
+          }
+          if (activeMode === 'homey' && derivedTargetPower !== 0) {
+            this.setStoreValue('lastActivePower', derivedTargetPower).catch(this.error);
+          }
         }
       }
 
