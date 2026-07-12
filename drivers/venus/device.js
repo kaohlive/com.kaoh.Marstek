@@ -1686,12 +1686,12 @@ async writeDeviceName(name, config) {
 
   // Flow card condition handlers
   async conditionIsCharging() {
-    const status = this.getCapabilityValue('charging_status');
+    const status = this.getCapabilityValue('battery_charging_state');
     return status === 'charging';
   }
 
   async conditionIsDischarging() {
-    const status = this.getCapabilityValue('charging_status');
+    const status = this.getCapabilityValue('battery_charging_state');
     return status === 'discharging';
   }
 
