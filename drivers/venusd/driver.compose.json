@@ -41,6 +41,7 @@
     "measure_temperature.mos2",
     "battery_charging_state",
     "alarm_generic",
+    "alarm_connectivity",
     "force_charge_mode",
     "operation_mode",
     "user_work_mode",

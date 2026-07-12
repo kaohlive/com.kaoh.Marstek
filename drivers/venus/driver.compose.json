@@ -39,6 +39,7 @@
     "meter_power.imported",
     "meter_power.exported",
     "alarm_generic",
+    "alarm_connectivity",
     "measure_temperature",
     "measure_temperature.mos1",
     "measure_temperature.mos2",

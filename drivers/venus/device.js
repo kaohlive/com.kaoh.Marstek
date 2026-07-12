@@ -118,6 +118,11 @@ class VenusBatteryDevice extends Homey.Device {
       this.log('Registered missing onoff capability');
       neededFix = true;
     }
+    if(!this.hasCapability('alarm_connectivity')) {
+      await this.addCapability('alarm_connectivity');
+      this.log('Registered missing alarm_connectivity capability');
+      neededFix = true;
+    }
     return neededFix;
   }
 
@@ -566,7 +571,7 @@ async writeDeviceName(name, config) {
       this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
 
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this._setUnavailableSafe(`Connection failed after ${this.maxConsecutiveErrors} attempts`);
+        this._setConnectivityAlarm(true);
       }
       return;
     }
@@ -598,6 +603,7 @@ async writeDeviceName(name, config) {
           this.log(`Partial poll: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed`);
         }
         this.consecutiveErrors = 0;
+        this._setConnectivityAlarm(false);
         if (!this._isDeleted && !this.getAvailable()) {
           this._setAvailableSafe();
         }
@@ -605,7 +611,7 @@ async writeDeviceName(name, config) {
         this.consecutiveErrors++;
         this.log(`Poll produced no data (${this._pollReadsFail} reads failed) (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-          this._setUnavailableSafe(`Polling produced no data for ${this.maxConsecutiveErrors} cycles`);
+          this._setConnectivityAlarm(true);
         }
       }
 
@@ -613,11 +619,24 @@ async writeDeviceName(name, config) {
       this.consecutiveErrors++;
       this.log(`Polling error (${this.consecutiveErrors}/${this.maxConsecutiveErrors}):`, error.message);
 
-      // Only mark unavailable after multiple consecutive failures
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this._setUnavailableSafe(`Polling failed ${this.maxConsecutiveErrors} times: ${error.message}`);
+        this._setConnectivityAlarm(true);
       }
     }
+  }
+
+  // Reflect current reachability into the alarm_connectivity capability.
+  // Preferred over setUnavailable because Homey treats unavailable devices as
+  // flow-error triggers (breaking every automation that references the
+  // device); alarm_connectivity is a plain boolean flows can branch on, so
+  // "am I currently reading fresh data?" becomes an explicit condition rather
+  // than a hidden side-channel that nukes automations.
+  _setConnectivityAlarm(disconnected) {
+    if (this._isDeleted) return;
+    if (!this.hasCapability('alarm_connectivity')) return;
+    const current = this.getCapabilityValue('alarm_connectivity');
+    if (current === disconnected) return;
+    this.setCapabilityValue('alarm_connectivity', disconnected).catch(this.error);
   }
 
   // Read a Modbus holding register with error isolation. Returns the buffer
