@@ -538,10 +538,14 @@ class VenusDDevice extends Homey.Device {
         }
       }
 
-      // SOC at 32104 - u16 in 0.1% units on Venus D (500 = 50%).
+      // SOC at 32104 - u16 in 1% units on Venus D (50 = 50%), same as Venus E.
+      // Earlier v1.5.4 rewire assumed 0.1% units per the community v153 sheet,
+      // but a tester who mapped every register over a Waveshare RS485 gateway
+      // (bypassing the flaky built-in Modbus TCP on v149) confirmed 32104 is
+      // percent-direct - matching the Venus E driver.
       const reg_soc = await this._readSafe(slaveId, 32104, 1, 'SOC');
       if (reg_soc) {
-        const soc = ModbusClient.bufferToUint16(Buffer.concat(reg_soc)) / 10;
+        const soc = ModbusClient.bufferToUint16(Buffer.concat(reg_soc));
         this.setCapabilityValue('measure_battery', soc).catch(this.error);
         if (this.batteryCapacity) {
           const stored_energy = this.batteryCapacity * (soc / 100);
