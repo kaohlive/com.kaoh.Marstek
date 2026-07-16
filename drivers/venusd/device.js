@@ -25,15 +25,18 @@ const ModbusClient = require('../../api/ModbusClient');
 //   Marstek shifted the semantics of 36103 in newer firmware.
 // - 36104 is absent on every firmware tested.
 //
+// PV/MPPT REGISTERS (30037-30040):
+// - v1.5.9 added per-MPPT solar power reads (INT16 raw * 0.1 = W)
+//   plus a summed measure_power.pv total. Undocumented in the
+//   community v153 datasheet; a tester mapped them working over
+//   Modbus TCP via a Waveshare RS485 gateway. Devices with fewer
+//   than 4 MPPT inputs report 0 on the unused strings.
+//
 // DELIBERATELY OMITTED:
 // - Battery current (32101) and battery power (32102) - the tester
 //   confirmed these return garbage on Venus D (32101 always 0.02A,
 //   32102 always 0W) even on the working v147 firmware. Skipping
 //   reads avoids populating misleading values.
-// - PV/MPPT registers - not documented in the community datasheet.
-//   The Marstek local API (UDP JSON) exposes Solar power; the
-//   Modbus range does not. Users needing PV data should combine
-//   this driver with the Marstek Local API Homey app.
 // - Firmware register 31101 - times out on v149 which triggers a
 //   deaf-after-error lockup. Same skip as v1.5.1 kept.
 // - Mode-events ringbuffer (Venus E's write/read latency diagnostic).
@@ -98,6 +101,9 @@ class VenusDDevice extends Homey.Device {
       'user_work_mode', 'target_power', 'target_power_mode',
       'force_charge_power', 'force_discharge_power',
       'max_charge_power_limit', 'max_discharge_power_limit',
+      'measure_power.pv',
+      'measure_power.mppt1', 'measure_power.mppt2',
+      'measure_power.mppt3', 'measure_power.mppt4',
     ];
     let neededFix = false;
     for (const cap of needed) {
@@ -112,11 +118,13 @@ class VenusDDevice extends Homey.Device {
       }
     }
     // Remove stale capabilities that shipped in earlier Venus D Phase 1
-    // compose but that we no longer populate (PV placeholders, broken
-    // battery-side measurements). Silences empty tiles in the UI.
+    // compose but that we no longer populate (battery-side measurements,
+    // per-MPPT voltage/current/energy placeholders). measure_power.pv is
+    // NOT in this list - v1.5.9 re-introduces it once a tester proved the
+    // MPPT registers 30037-30040 are readable over Modbus.
     const removeCaps = [
       'measure_power.battery', 'measure_current.battery',
-      'measure_power.pv', 'measure_voltage.pv', 'measure_current.pv', 'meter_power.pv',
+      'measure_voltage.pv', 'measure_current.pv', 'meter_power.pv',
     ];
     for (const cap of removeCaps) {
       if (this.hasCapability(cap)) {
@@ -424,6 +432,7 @@ class VenusDDevice extends Homey.Device {
 
       await this.processBatteryState(slaveId);
       await this.processBatteryHealth(slaveId);
+      await this.processPvData(slaveId);
       await this.processSystemData(slaveId);
 
       // Partial reads (some succeed, some fail) count as success - stale on a
@@ -593,6 +602,45 @@ class VenusDDevice extends Homey.Device {
       await this.processAlarmCodes(slaveId);
     } catch (error) {
       this.log('Error processing battery health:', error);
+    }
+  }
+
+  // PV (solar) readings for the Venus D hybrid inverter's four MPPT inputs.
+  //
+  // Registers 30037-30040 (one per MPPT string, INT16, raw * 0.1 = W).
+  // These are undocumented in the community v153 datasheet, which was why
+  // v1.5.4-v1.5.8 said "PV data only via Marstek UDP local API". A tester
+  // proved them readable over Modbus TCP via a Waveshare RS485 gateway
+  // (bypassing the flaky built-in Ethernet stack on v149) and mapped them
+  // to working solar-power flows.
+  //
+  // Devices with fewer than 4 MPPT inputs simply report 0 on the unused
+  // strings, which is harmless.
+  async processPvData(slaveId) {
+    try {
+      let anyRead = false;
+      let total = 0;
+      for (let i = 0; i < 4; i++) {
+        const reg = await this._readSafe(slaveId, 30037 + i, 1, `MPPT${i + 1} power`);
+        if (reg) {
+          const power = ModbusClient.bufferToInt16(Buffer.concat(reg)) / 10;
+          this.setCapabilityValue(`measure_power.mppt${i + 1}`, power).catch(this.error);
+          total += power;
+          anyRead = true;
+        } else {
+          // Fall back to the last known value in the running sum so a
+          // single register hiccup does not understate total PV power.
+          const prev = this.getCapabilityValue(`measure_power.mppt${i + 1}`);
+          if (typeof prev === 'number') total += prev;
+        }
+      }
+      // Only touch the PV total if at least one MPPT read succeeded this
+      // cycle; otherwise leave the stale value in place.
+      if (anyRead) {
+        this.setCapabilityValue('measure_power.pv', total).catch(this.error);
+      }
+    } catch (error) {
+      this.log('Error processing PV data:', error);
     }
   }
 

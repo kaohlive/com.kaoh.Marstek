@@ -4093,6 +4093,11 @@
         "meter_power.capacity",
         "measure_power.imported",
         "measure_power.exported",
+        "measure_power.pv",
+        "measure_power.mppt1",
+        "measure_power.mppt2",
+        "measure_power.mppt3",
+        "measure_power.mppt4",
         "meter_power.imported",
         "meter_power.exported",
         "measure_temperature",
@@ -4163,6 +4168,36 @@
           "title": {
             "en": "Discharging Power",
             "nl": "Ontlaad vermogen"
+          }
+        },
+        "measure_power.pv": {
+          "title": {
+            "en": "Solar Power",
+            "nl": "Zonne-energie vermogen"
+          }
+        },
+        "measure_power.mppt1": {
+          "title": {
+            "en": "MPPT1 Power",
+            "nl": "MPPT1 vermogen"
+          }
+        },
+        "measure_power.mppt2": {
+          "title": {
+            "en": "MPPT2 Power",
+            "nl": "MPPT2 vermogen"
+          }
+        },
+        "measure_power.mppt3": {
+          "title": {
+            "en": "MPPT3 Power",
+            "nl": "MPPT3 vermogen"
+          }
+        },
+        "measure_power.mppt4": {
+          "title": {
+            "en": "MPPT4 Power",
+            "nl": "MPPT4 vermogen"
           }
         },
         "meter_power.imported": {
