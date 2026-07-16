@@ -31,6 +31,7 @@
     "measure_current",
     "measure_power",
     "measure_voltage.battery",
+    "measure_power.battery",
     "meter_power.capacity",
     "measure_power.imported",
     "measure_power.exported",
@@ -85,6 +86,12 @@
       "title": {
         "en": "Battery Voltage",
         "nl": "Batterij voltage"
+      }
+    },
+    "measure_power.battery": {
+      "title": {
+        "en": "Battery Power",
+        "nl": "Batterij vermogen"
       }
     },
     "measure_current": {

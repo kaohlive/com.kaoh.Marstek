@@ -32,11 +32,18 @@ const ModbusClient = require('../../api/ModbusClient');
 //   Modbus TCP via a Waveshare RS485 gateway. Devices with fewer
 //   than 4 MPPT inputs report 0 on the unused strings.
 //
+// DERIVED (not read):
+// - Battery DC power (measure_power.battery) is reconstructed in
+//   processPvData as MPPT_sum + (-measure_power) since the native
+//   register 32102 returns 0W on Venus D. The formula follows the
+//   tester's Waveshare-mapped flow: solar in plus net AC contribution
+//   equals what the battery is receiving right now.
+//
 // DELIBERATELY OMITTED:
-// - Battery current (32101) and battery power (32102) - the tester
-//   confirmed these return garbage on Venus D (32101 always 0.02A,
-//   32102 always 0W) even on the working v147 firmware. Skipping
-//   reads avoids populating misleading values.
+// - Battery current (32101) - returns garbage on Venus D (always 0.02A)
+//   even on the working v147 firmware. No sensible derivation available
+//   without a battery-voltage-times-power calc that would compound
+//   errors, so we skip it.
 // - Firmware register 31101 - times out on v149 which triggers a
 //   deaf-after-error lockup. Same skip as v1.5.1 kept.
 // - Mode-events ringbuffer (Venus E's write/read latency diagnostic).
@@ -101,7 +108,7 @@ class VenusDDevice extends Homey.Device {
       'user_work_mode', 'target_power', 'target_power_mode',
       'force_charge_power', 'force_discharge_power',
       'max_charge_power_limit', 'max_discharge_power_limit',
-      'measure_power.pv',
+      'measure_power.pv', 'measure_power.battery',
       'measure_power.mppt1', 'measure_power.mppt2',
       'measure_power.mppt3', 'measure_power.mppt4',
     ];
@@ -118,12 +125,14 @@ class VenusDDevice extends Homey.Device {
       }
     }
     // Remove stale capabilities that shipped in earlier Venus D Phase 1
-    // compose but that we no longer populate (battery-side measurements,
-    // per-MPPT voltage/current/energy placeholders). measure_power.pv is
-    // NOT in this list - v1.5.9 re-introduces it once a tester proved the
-    // MPPT registers 30037-30040 are readable over Modbus.
+    // compose but that we no longer populate (per-MPPT voltage/current/energy
+    // placeholders, direct battery current). measure_power.pv and
+    // measure_power.battery are NOT in this list - v1.5.9 re-introduces
+    // them: .pv from proven MPPT registers 30037-30040, .battery as a
+    // derived value (MPPT sum + net AC contribution) since the direct
+    // register 32102 returns garbage on Venus D.
     const removeCaps = [
-      'measure_power.battery', 'measure_current.battery',
+      'measure_current.battery',
       'measure_voltage.pv', 'measure_current.pv', 'meter_power.pv',
     ];
     for (const cap of removeCaps) {
@@ -638,6 +647,30 @@ class VenusDDevice extends Homey.Device {
       // cycle; otherwise leave the stale value in place.
       if (anyRead) {
         this.setCapabilityValue('measure_power.pv', total).catch(this.error);
+
+        // Reconstruct battery DC power. Register 32102 (native battery
+        // power) returns garbage on Venus D so we derive it from what we
+        // can read: everything the battery is receiving must equal solar
+        // in plus net AC contribution.
+        //
+        //   battery_power = MPPT_sum + (-measure_power)
+        //
+        // measure_power is Homey convention (+ = exporting to grid), so
+        // -measure_power is charging-positive on the AC side. Sign checks:
+        //   charging from grid, no sun: MPPT=0, mp=-1000 -> battery=+1000
+        //   discharging to grid, no sun: MPPT=0, mp=+1000 -> battery=-1000
+        //   sun 500W to battery, grid idle: MPPT=500, mp=0 -> battery=+500
+        //   sun 500W, exporting 200W:      MPPT=500, mp=+200 -> battery=+300
+        //
+        // processBatteryState runs before processPvData in the poll cycle
+        // so measure_power is already fresh (or stale from prior cycle,
+        // which is still a sensible fallback). Only skip if the capability
+        // was never populated at all.
+        const acHomey = this.getCapabilityValue('measure_power');
+        if (typeof acHomey === 'number') {
+          const batteryPower = total + (-acHomey);
+          this.setCapabilityValue('measure_power.battery', batteryPower).catch(this.error);
+        }
       }
     } catch (error) {
       this.log('Error processing PV data:', error);
