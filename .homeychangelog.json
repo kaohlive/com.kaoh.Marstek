@@ -1,4 +1,7 @@
 {
+  "1.5.11": {
+    "en": "Fixed a bug that re-sent the target SOC while the device view was open, pulling batteries into SOC mode while a flow was driving them with target power. The force mode is also no longer left on 'Force to SOC target' after switching to self consumption, AI optimization or manual. Venus E and Venus D."
+  },
   "1.5.10": {
     "en": "Venus D: measure_power.battery is now available as a derived value. Native register 32102 returns garbage on Venus D hardware even on the working v147 firmware, so the driver skipped it entirely and users had no battery-power tile at all where Venus E users have one out of the box. Now reconstructed as MPPT_sum + (-measure_power) - solar in plus net AC contribution equals what the battery is receiving. Same charging-positive sign convention Venus E uses. Cap picks up automatically on existing devices via repairCapabilities."
   },

@@ -1330,6 +1330,9 @@ class VenusDDevice extends Homey.Device {
       await this.onCapabilityUserWorkMode(targetWorkMode);
       if (value !== 'homey') {
         await this.setCapabilityValue('target_power', 0).catch(this.error);
+        // Handing control back to an autonomous mode ends every homey force
+        // strategy. force_soc is sticky in the poll loop, so clear it here.
+        await this.setCapabilityValue('force_charge_mode', 'none').catch(this.error);
       }
       await this.setCapabilityValue('target_power_mode', value).catch(this.error);
       if (value !== 'homey') {
@@ -1345,24 +1348,67 @@ class VenusDDevice extends Homey.Device {
     }
   }
 
+  // See the Venus E driver for the full rationale: the Homey app re-emits a
+  // cached slider value when the user opens the device view, so this handler has
+  // to tell a deliberate SOC-target instruction apart from a UI refresh or
+  // merely looking at the tile flips a target_power-driven battery into
+  // force_soc. Flow-initiated calls pass fromFlow and are never guarded.
   async onCapabilityForceChargeTarget(value, opts = {}) {
     try {
-      if (!await this.connectModbus()) throw new Error('Modbus connection failed');
-      if (this.getCapabilityValue('target_power_mode') !== 'homey') {
-        this.log('force_charge_target changed while not in homey mode - switching');
-        await this.onCapabilityTargetPowerMode('homey');
+      const target = Math.round(Number(value));
+      if (!Number.isFinite(target)) {
+        throw new Error(`Invalid force SOC target: ${value}`);
       }
+      const currentTarget = this.getCapabilityValue('force_charge_target');
+      const currentSoc = this.getCapabilityValue('measure_battery');
+
+      // Unchanged target from the UI while target_power actively drives the
+      // battery: a re-emit, not an instruction.
+      if (!opts.fromFlow
+          && target === currentTarget
+          && this.getCapabilityValue('force_charge_mode') === 'target_power'
+          && (this.getCapabilityValue('target_power') || 0) !== 0) {
+        this.log(`force_charge_target ${target}% unchanged while target_power is driving - treating as UI refresh, ignoring`);
+        return;
+      }
+
+      // Same target while force_soc is already active changes nothing.
+      if (target === currentTarget
+          && this.getCapabilityValue('force_charge_mode') === 'force_soc') {
+        this.log(`force_charge_target already ${target}% in force_soc - skipping redundant write`);
+        return;
+      }
+
+      // A target equal to the current SOC is the neutralization value
+      // onCapabilityTargetPower writes to 42011, not a charge instruction.
+      const neutralTarget = (typeof currentSoc === 'number' && currentSoc > 0)
+        ? Math.max(11, Math.min(100, Math.round(currentSoc)))
+        : null;
+      const isNeutralTarget = neutralTarget !== null && target === neutralTarget;
+
+      if (!await this.connectModbus()) throw new Error('Modbus connection failed');
       const slaveId = this.settings.slave_id || 1;
-      await this.setCapabilityValue('force_charge_mode', 'force_soc');
-      await this.modbus.writeSingleRegister(slaveId, 42011, value);
-      this.log('Set the force SOC target to ' + value);
-      await this.setCapabilityValue('force_charge_target', value);
-      await this.setCapabilityValue('onoff', true).catch(this.error);
-      await this.setStoreValue('lastActiveMode', 'homey');
+
+      if (isNeutralTarget) {
+        await this.modbus.writeSingleRegister(slaveId, 42011, target);
+        await this.setCapabilityValue('force_charge_target', target);
+        this.log(`Force SOC target ${target}% equals current SOC - register synced, force_soc not activated`);
+      } else {
+        if (this.getCapabilityValue('target_power_mode') !== 'homey') {
+          this.log('force_charge_target changed while not in homey mode - switching');
+          await this.onCapabilityTargetPowerMode('homey');
+        }
+        await this.setCapabilityValue('force_charge_mode', 'force_soc');
+        await this.modbus.writeSingleRegister(slaveId, 42011, target);
+        this.log('Set the force SOC target to ' + target);
+        await this.setCapabilityValue('force_charge_target', target);
+        await this.setCapabilityValue('onoff', true).catch(this.error);
+        await this.setStoreValue('lastActiveMode', 'homey');
+      }
       if (this.forceChargeTargetChangedTrigger && !opts.fromCloudSync) {
         await this.forceChargeTargetChangedTrigger.trigger(this,
-          { target: value },
-          { target: value }
+          { target: target },
+          { target: target }
         );
       }
     } catch (error) {
@@ -1504,7 +1550,8 @@ class VenusDDevice extends Homey.Device {
     if (target < 11 || target > 100) {
       throw new Error(`Invalid SOC target: ${target}%. Must be between 11-100%`);
     }
-    await this.onCapabilityForceChargeTarget(target);
+    // fromFlow marks this as deliberate so the refresh guard never swallows it.
+    await this.onCapabilityForceChargeTarget(target, { fromFlow: true });
     return true;
   }
   async actionSetChargingCutoffSoc(args) {

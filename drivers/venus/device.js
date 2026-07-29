@@ -1722,6 +1722,12 @@ async writeDeviceName(name, config) {
 
       if (value !== 'homey') {
         await this.setCapabilityValue('target_power', 0).catch(this.error);
+        // Handing control back to an autonomous mode ends every homey force
+        // strategy. force_soc in particular is sticky - the poll loop keeps it
+        // on purpose because register 42010 reads 'none' while a SOC target is
+        // running - so it has to be cleared here or the tile keeps claiming
+        // "Force to SOC target" while the battery runs self-consumption.
+        await this.setCapabilityValue('force_charge_mode', 'none').catch(this.error);
       }
 
       await this.setCapabilityValue('target_power_mode', value).catch(this.error);
@@ -1742,38 +1748,92 @@ async writeDeviceName(name, config) {
     }
   }
 
+  // The SOC-target slider is a setable control whose write carries side effects
+  // (activate force_soc, pull the battery into homey work mode). The Homey
+  // mobile/desktop app re-emits a cached capability value when the user merely
+  // opens the device view - the same behaviour onCapabilityUserWorkMode,
+  // onCapabilityTargetPowerMode and onCapabilityTargetPower already guard
+  // against. Without a guard here, opening the tile while the "Force SOC
+  // target" slider is the selected slider flips a target_power-driven battery
+  // into force_soc, which the poll loop then deliberately never clears.
+  // Flow-initiated calls pass fromFlow so they are never mistaken for a refresh.
   async onCapabilityForceChargeTarget(value, opts = {}) {
     try {
+      const target = Math.round(Number(value));
+      if (!Number.isFinite(target)) {
+        throw new Error(`Invalid force SOC target: ${value}`);
+      }
+      const currentTarget = this.getCapabilityValue('force_charge_target');
+      const currentSoc = this.getCapabilityValue('measure_battery');
+
+      // Refresh guard: an unchanged target arriving from the UI while
+      // target_power is actively driving the battery is a re-emit, not an
+      // instruction - a real slider drag always changes the value. Flow calls
+      // are exempt because a flow may deliberately re-assert the same target.
+      if (!opts.fromFlow
+          && target === currentTarget
+          && this.getCapabilityValue('force_charge_mode') === 'target_power'
+          && (this.getCapabilityValue('target_power') || 0) !== 0) {
+        this.log(`force_charge_target ${target}% unchanged while target_power is driving - treating as UI refresh, ignoring`);
+        return;
+      }
+
+      // Idempotency: the same target while force_soc is already the active
+      // strategy changes nothing on the hardware.
+      if (target === currentTarget
+          && this.getCapabilityValue('force_charge_mode') === 'force_soc') {
+        this.log(`force_charge_target already ${target}% in force_soc - skipping redundant write`);
+        return;
+      }
+
+      // A target equal to the battery's current SOC is not a charge
+      // instruction: it is exactly the value onCapabilityTargetPower writes to
+      // 42011 to neutralize a previous force_soc, and there is physically
+      // nothing to charge towards. Keep the register in sync, but do not claim
+      // force_soc, do not seize the work mode, and do not report the battery
+      // as working.
+      const neutralTarget = (typeof currentSoc === 'number' && currentSoc > 0)
+        ? Math.max(11, Math.min(100, Math.round(currentSoc)))
+        : null;
+      const isNeutralTarget = neutralTarget !== null && target === neutralTarget;
+
       if (!await this.connectModbus()) {
         throw new Error('Modbus connection failed');
       }
 
-      // Setting a SOC target is intrinsically a force-control action, so
-      // auto-switch to homey mode instead of requiring the user to enable
-      // control_mode separately.
-      if (this.getCapabilityValue('target_power_mode') !== 'homey') {
-        this.log('force_charge_target changed while not in homey mode - switching to homey');
-        await this.onCapabilityTargetPowerMode('homey');
-      }
-
       const slaveId = this.settings.slave_id || 1;
-      //Set the force SOC Target for forced charge/discharge
-      await this.setCapabilityValue('force_charge_mode','force_soc');
-      await this.modbus.writeSingleRegister(slaveId, 42011, value);
-      this.log('Set the force SOC target to '+value+', now trigger the workflow')
 
-      // Update the capability value to reflect the change in UI
-      await this.setCapabilityValue('force_charge_target', value);
+      if (isNeutralTarget) {
+        await this.modbus.writeSingleRegister(slaveId, 42011, target);
+        await this.setCapabilityValue('force_charge_target', target);
+        this.log(`Force SOC target ${target}% equals current SOC - register synced, force_soc not activated`);
+      } else {
+        // Setting a SOC target is intrinsically a force-control action, so
+        // auto-switch to homey mode instead of requiring the user to enable
+        // control_mode separately.
+        if (this.getCapabilityValue('target_power_mode') !== 'homey') {
+          this.log('force_charge_target changed while not in homey mode - switching to homey');
+          await this.onCapabilityTargetPowerMode('homey');
+        }
 
-      // force_soc is an active homey-control strategy, so the master switch
-      // should reflect "on" immediately rather than wait for next poll.
-      await this.setCapabilityValue('onoff', true).catch(this.error);
-      await this.setStoreValue('lastActiveMode', 'homey');
+        //Set the force SOC Target for forced charge/discharge
+        await this.setCapabilityValue('force_charge_mode','force_soc');
+        await this.modbus.writeSingleRegister(slaveId, 42011, target);
+        this.log('Set the force SOC target to '+target+', now trigger the workflow')
+
+        // Update the capability value to reflect the change in UI
+        await this.setCapabilityValue('force_charge_target', target);
+
+        // force_soc is an active homey-control strategy, so the master switch
+        // should reflect "on" immediately rather than wait for next poll.
+        await this.setCapabilityValue('onoff', true).catch(this.error);
+        await this.setStoreValue('lastActiveMode', 'homey');
+      }
 
       if (this.forceChargeTargetChangedTrigger && !opts.fromCloudSync) {
         await this.forceChargeTargetChangedTrigger.trigger(this,
-          { target: value },
-          { target: value }
+          { target: target },
+          { target: target }
         );
       }
     } catch (error) {
@@ -2156,7 +2216,9 @@ async writeDeviceName(name, config) {
       }
 
       this.log(`Setting force charge target to: ${target}%`);
-      await this.onCapabilityForceChargeTarget(target);
+      // fromFlow marks this as a deliberate instruction so the refresh guard in
+      // the handler never swallows a flow that re-asserts the same target.
+      await this.onCapabilityForceChargeTarget(target, { fromFlow: true });
 
       return true;
     } catch (error) {
