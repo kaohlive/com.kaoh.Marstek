@@ -66,6 +66,18 @@ class VenusDDevice extends Homey.Device {
     this.consecutiveErrors = 0;
     this.maxConsecutiveErrors = this.settings.max_consecutive_errors || 3;
 
+    // Poll-cycle load limiters - see _readSafe and pollData.
+    this._pollInFlight = false;
+    this._pollStartedAt = 0;
+    this._pollSkippedTicks = 0;
+    this._pollConsecutiveFails = 0;
+    this._pollBreakerTripped = false;
+    this._pollSkippedLabels = [];
+    this._probeMode = false;
+    // Consecutive failed reads within one cycle before the bus is declared
+    // dead and the remaining reads are skipped.
+    this.POLL_BREAKER_THRESHOLD = 3;
+
     this.setupModbusHandlers();
     await this.repairCapabilities();
     this.startPolling();
@@ -421,28 +433,52 @@ class VenusDDevice extends Homey.Device {
   async pollData() {
     if (this._isDeleted) return;
 
-    if (!await this.connectModbus()) {
-      this.consecutiveErrors++;
-      this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
-      if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this._setConnectivityAlarm(true);
-      }
+    // Re-entrancy guard: setInterval does not await its callback, so a cycle
+    // running longer than poll_interval used to have another cycle stacked on
+    // top of it on the same connection. Skip the tick and say so.
+    if (this._pollInFlight) {
+      this._pollSkippedTicks++;
+      this.log(`[poll] Tick skipped: previous cycle still running after ${Date.now() - this._pollStartedAt}ms (${this._pollSkippedTicks} tick(s) skipped so far)`);
       return;
     }
 
+    this._pollInFlight = true;
+    this._pollStartedAt = Date.now();
+    this._pollSkippedTicks = 0;
+
     try {
+      if (!await this.connectModbus()) {
+        this.consecutiveErrors++;
+        this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+        if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
+          this._setConnectivityAlarm(true);
+        }
+        return;
+      }
+
       const slaveId = this.settings.slave_id || 1;
-      // Per-cycle read counters used by _readSafe. Judged at the end of this
-      // poll to decide whether the cycle counts as a partial success or a
-      // full failure.
+      // Per-cycle read counters and circuit-breaker state used by _readSafe.
+      // Judged at the end of this poll to decide whether the cycle counts as a
+      // partial success or a full failure.
       this._pollReadsOk = 0;
       this._pollReadsFail = 0;
+      this._pollConsecutiveFails = 0;
+      this._pollBreakerTripped = false;
+      this._pollSkippedLabels = [];
       console.log('[VenusD] Polling slave', slaveId);
 
       await this.processBatteryState(slaveId);
       await this.processBatteryHealth(slaveId);
       await this.processPvData(slaveId);
       await this.processSystemData(slaveId);
+
+      // Account for everything the breaker skipped, so a thin poll is never
+      // mistaken for "these registers do not exist on this firmware". Arm
+      // probe mode so the next cycle re-tests the bus without retries.
+      if (this._pollBreakerTripped) {
+        this._probeMode = true;
+        this.log(`[poll] Cycle stopped early after ${Date.now() - this._pollStartedAt}ms: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed, ${this._pollSkippedLabels.length} not read (${this._pollSkippedLabels.join(', ')})`);
+      }
 
       // Partial reads (some succeed, some fail) count as success - stale on a
       // few caps is better than skipping the whole cycle. Only a fully-empty
@@ -469,6 +505,10 @@ class VenusDDevice extends Homey.Device {
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this._setConnectivityAlarm(true);
       }
+    } finally {
+      // Must clear on every exit path, including the connect-failure return
+      // above - a stuck flag would silence polling until the app restarts.
+      this._pollInFlight = false;
     }
   }
 
@@ -492,15 +532,36 @@ class VenusDDevice extends Homey.Device {
   // register timeout from throwing out of a process* block and skipping every
   // subsequent read - especially important on the Venus D where firmware v149
   // is known to time out on individual registers under load.
+  // See the Venus E driver for the full rationale. Two load limiters: a
+  // per-cycle circuit breaker that stops touching the wire after
+  // POLL_BREAKER_THRESHOLD consecutive failures, and probe mode which reads
+  // without retries on the cycle after a trip. Every skipped register is
+  // recorded and reported by pollData so a thin poll is never silent.
   async _readSafe(slaveId, address, count, label) {
+    if (this._pollBreakerTripped) {
+      this._pollSkippedLabels.push(`${address}/${label}`);
+      return null;
+    }
     try {
-      const buf = await this.modbus.readHoldingRegisters(slaveId, address, count);
+      const buf = await this.modbus.readHoldingRegisters(
+        slaveId, address, count, this._probeMode ? 0 : 2,
+      );
       this._pollReadsOk++;
+      this._pollConsecutiveFails = 0;
+      if (this._probeMode) {
+        this.log(`[poll] Probe read of ${address} (${label}) succeeded - bus is answering again, restoring normal retries`);
+        this._probeMode = false;
+      }
       return buf;
     } catch (err) {
       this._pollReadsFail++;
+      this._pollConsecutiveFails++;
       const msg = (err && err.message) ? err.message : String(err);
       this.log(`Register ${address} (${label}) read failed: ${msg}`);
+      if (this._pollConsecutiveFails >= this.POLL_BREAKER_THRESHOLD) {
+        this._pollBreakerTripped = true;
+        this.log(`[poll] Circuit breaker tripped: ${this._pollConsecutiveFails} consecutive read failures, last ${address} (${label}). Skipping the remaining registers this cycle to stop loading the bus; the next cycle probes with retries disabled.`);
+      }
       return null;
     }
   }
@@ -696,8 +757,10 @@ class VenusDDevice extends Homey.Device {
       let grid_fault = 0;
       let battery_fault = 0;
 
-      try {
-        const reg_alarm_code = await this.modbus.readHoldingRegisters(slaveId, 36000, 1);
+      // Routed through _readSafe so the alarm block honours the circuit
+      // breaker instead of adding three more timing-out reads to a dead bus.
+      const reg_alarm_code = await this._readSafe(slaveId, 36000, 1, 'system alarm code');
+      if (reg_alarm_code) {
         alarm_code = ModbusClient.bufferToUint16(Buffer.concat(reg_alarm_code));
         if (alarm_code > 0) {
           hasAlarm = true;
@@ -709,12 +772,10 @@ class VenusDDevice extends Homey.Device {
           if (alarm_code & 0x20) { alarms.push('Output Overcurrent Warning'); systemAlarms.push('Output Overcurrent Warning'); }
           if (alarm_code & 0x40) { alarms.push('Abnormal Line Sequence Detection'); systemAlarms.push('Abnormal Line Sequence Detection'); }
         }
-      } catch (e) {
-        this.log(`Alarm register 36000 not available: ${e.message}`);
       }
 
-      try {
-        const reg_grid_fault = await this.modbus.readHoldingRegisters(slaveId, 36100, 1);
+      const reg_grid_fault = await this._readSafe(slaveId, 36100, 1, 'grid fault word');
+      if (reg_grid_fault) {
         grid_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_grid_fault));
         if (grid_fault > 0) {
           hasAlarm = true;
@@ -726,12 +787,10 @@ class VenusDDevice extends Homey.Device {
           if (grid_fault & 0x20) { alarms.push('Current Dcover'); gridAlarms.push('Current Dcover'); }
           if (grid_fault & 0x40) { alarms.push('Voltage Dcover'); gridAlarms.push('Voltage Dcover'); }
         }
-      } catch (e) {
-        this.log(`Grid fault register 36100 not available: ${e.message}`);
       }
 
-      try {
-        const reg_battery_fault = await this.modbus.readHoldingRegisters(slaveId, 36101, 1);
+      const reg_battery_fault = await this._readSafe(slaveId, 36101, 1, 'battery fault word');
+      if (reg_battery_fault) {
         battery_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_battery_fault));
         if (battery_fault > 0) {
           hasAlarm = true;
@@ -742,8 +801,6 @@ class VenusDDevice extends Homey.Device {
           if (battery_fault & 0x10) { alarms.push('Battery Communication Failure'); batteryAlarms.push('Battery Communication Failure'); }
           if (battery_fault & 0x20) { alarms.push('BMS Protect'); batteryAlarms.push('BMS Protect'); }
         }
-      } catch (e) {
-        this.log(`Battery fault register 36101 not available: ${e.message}`);
       }
 
       const alarmPolicy = this.getSetting('show_alarms') || 'auto';

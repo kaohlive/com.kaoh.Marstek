@@ -29,6 +29,21 @@ class VenusBatteryDevice extends Homey.Device {
     this.consecutiveErrors = 0;
     this.maxConsecutiveErrors = this.settings.max_consecutive_errors || 3;
 
+    // Poll-cycle load limiters. A dead bus used to cost 20 register reads x 3
+    // attempts x 5s per device per cycle, while setInterval kept starting more
+    // overlapping cycles on top - on a shared RS485 gateway that traffic is
+    // what prevents the bus from recovering. See _readSafe and pollData.
+    this._pollInFlight = false;
+    this._pollStartedAt = 0;
+    this._pollSkippedTicks = 0;
+    this._pollConsecutiveFails = 0;
+    this._pollBreakerTripped = false;
+    this._pollSkippedLabels = [];
+    this._probeMode = false;
+    // Consecutive failed reads within one cycle before the bus is declared
+    // dead and the remaining reads are skipped.
+    this.POLL_BREAKER_THRESHOLD = 3;
+
     // Mode-events ringbuffer for write/read latency diagnostics. Passive: only
     // records timestamps and raw register values to support data-driven tuning
     // of work-mode write→stable-read behaviour. Bounded to prevent unbounded
@@ -566,23 +581,41 @@ async writeDeviceName(name, config) {
       return;
     }
 
-    if (!await this.connectModbus()) {
-      this.consecutiveErrors++;
-      this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
-
-      if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
-        this._setConnectivityAlarm(true);
-      }
+    // Re-entrancy guard. setInterval does not await its callback, so once a
+    // cycle runs longer than poll_interval - trivially true as soon as reads
+    // start timing out - every tick used to start another overlapping cycle on
+    // the same connection, stacking dozens deep. Skip the tick instead, and
+    // say so rather than silently dropping it.
+    if (this._pollInFlight) {
+      this._pollSkippedTicks++;
+      this.log(`[poll] Tick skipped: previous cycle still running after ${Date.now() - this._pollStartedAt}ms (${this._pollSkippedTicks} tick(s) skipped so far)`);
       return;
     }
 
+    this._pollInFlight = true;
+    this._pollStartedAt = Date.now();
+    this._pollSkippedTicks = 0;
+
     try {
+      if (!await this.connectModbus()) {
+        this.consecutiveErrors++;
+        this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+
+        if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
+          this._setConnectivityAlarm(true);
+        }
+        return;
+      }
+
       const slaveId = this.settings.slave_id || 1;
-      // Per-cycle read counters used by _readSafe. Judged at the end of this
-      // poll to decide whether the cycle counts as a partial success or a
-      // full failure.
+      // Per-cycle read counters and circuit-breaker state used by _readSafe.
+      // Judged at the end of this poll to decide whether the cycle counts as a
+      // partial success or a full failure.
       this._pollReadsOk = 0;
       this._pollReadsFail = 0;
+      this._pollConsecutiveFails = 0;
+      this._pollBreakerTripped = false;
+      this._pollSkippedLabels = [];
       console.log('Attempt to read registers for slave device ['+slaveId+']')
       // Read battery status registers (example addresses based on typical battery systems)
       console.log('Get battery data [slave '+slaveId+']')
@@ -594,6 +627,14 @@ async writeDeviceName(name, config) {
       // Read system operation status registers
       console.log('Get system data [slave '+slaveId+']')
       await this.processSystemData(slaveId);
+
+      // Account for everything the breaker skipped, so a thin poll is never
+      // mistaken for "these registers do not exist on this firmware". Arm
+      // probe mode so the next cycle re-tests the bus without retries.
+      if (this._pollBreakerTripped) {
+        this._probeMode = true;
+        this.log(`[poll] Cycle stopped early after ${Date.now() - this._pollStartedAt}ms: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed, ${this._pollSkippedLabels.length} not read (${this._pollSkippedLabels.join(', ')})`);
+      }
 
       // Partial reads (some succeed, some fail) count as success - stale on a
       // few caps is better than skipping the whole cycle. Only a fully-empty
@@ -622,6 +663,10 @@ async writeDeviceName(name, config) {
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this._setConnectivityAlarm(true);
       }
+    } finally {
+      // Must clear on every exit path, including the connect-failure return
+      // above - a stuck flag would silence polling until the app restarts.
+      this._pollInFlight = false;
     }
   }
 
@@ -644,15 +689,47 @@ async writeDeviceName(name, config) {
   // so pollData can distinguish partial from full failures. Prevents a single
   // register timeout from throwing out of a process* block and skipping every
   // subsequent read.
+  //
+  // Two load limiters live here:
+  // (1) Per-cycle circuit breaker - after POLL_BREAKER_THRESHOLD consecutive
+  //     failures the bus is treated as dead and the remaining reads of this
+  //     cycle return null without touching the wire. Isolation alone (added in
+  //     1.5.8) meant a dead bus produced all 20 reads x 3 attempts x 5s every
+  //     cycle; before 1.5.8 the throw at least aborted the rest of its process
+  //     block. This keeps the 1.5.8 win for a single flaky register while
+  //     restoring a fast stop when nothing is answering.
+  // (2) Probe mode - the cycle after a trip reads without retries, so
+  //     re-testing a still-dead bus costs one timeout per read instead of
+  //     three. Cleared as soon as any read succeeds.
+  //
+  // Every skip is accounted for: the trip is logged once with the register
+  // that caused it, and pollData logs the full list of registers that were
+  // not read at the end of the cycle.
   async _readSafe(slaveId, address, count, label) {
+    if (this._pollBreakerTripped) {
+      this._pollSkippedLabels.push(`${address}/${label}`);
+      return null;
+    }
     try {
-      const buf = await this.modbus.readHoldingRegisters(slaveId, address, count);
+      const buf = await this.modbus.readHoldingRegisters(
+        slaveId, address, count, this._probeMode ? 0 : 2,
+      );
       this._pollReadsOk++;
+      this._pollConsecutiveFails = 0;
+      if (this._probeMode) {
+        this.log(`[poll] Probe read of ${address} (${label}) succeeded - bus is answering again, restoring normal retries`);
+        this._probeMode = false;
+      }
       return buf;
     } catch (err) {
       this._pollReadsFail++;
+      this._pollConsecutiveFails++;
       const msg = (err && err.message) ? err.message : String(err);
       this.log(`Register ${address} (${label}) read failed: ${msg}`);
+      if (this._pollConsecutiveFails >= this.POLL_BREAKER_THRESHOLD) {
+        this._pollBreakerTripped = true;
+        this.log(`[poll] Circuit breaker tripped: ${this._pollConsecutiveFails} consecutive read failures, last ${address} (${label}). Skipping the remaining registers this cycle to stop loading the bus; the next cycle probes with retries disabled.`);
+      }
       return null;
     }
   }
@@ -1079,9 +1156,11 @@ async writeDeviceName(name, config) {
       let grid_fault = 0;
       let battery_fault = 0;
 
-      // Try to read alarm code (36000) - System alarms
-      try {
-        const reg_alarm_code = await this.modbus.readHoldingRegisters(slaveId, 36000, 1);
+      // Try to read alarm code (36000) - System alarms. Routed through
+      // _readSafe so the alarm block honours the circuit breaker instead of
+      // adding three more timing-out reads to a bus that is already dead.
+      const reg_alarm_code = await this._readSafe(slaveId, 36000, 1, 'system alarm code');
+      if (reg_alarm_code) {
         alarm_code = ModbusClient.bufferToUint16(Buffer.concat(reg_alarm_code));
 
         if (alarm_code > 0) {
@@ -1094,13 +1173,11 @@ async writeDeviceName(name, config) {
           if (alarm_code & 0x20) { alarms.push('Output Overcurrent Warning'); systemAlarms.push('Output Overcurrent Warning'); }
           if (alarm_code & 0x40) { alarms.push('Abnormal Line Sequence Detection'); systemAlarms.push('Abnormal Line Sequence Detection'); }
         }
-      } catch (error) {
-        this.log(`Alarm register 36000 not available: ${error.message}`);
       }
 
       // Try to read grid fault word (36100) - Grid faults
-      try {
-        const reg_grid_fault = await this.modbus.readHoldingRegisters(slaveId, 36100, 1);
+      const reg_grid_fault = await this._readSafe(slaveId, 36100, 1, 'grid fault word');
+      if (reg_grid_fault) {
         grid_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_grid_fault));
 
         if (grid_fault > 0) {
@@ -1113,13 +1190,11 @@ async writeDeviceName(name, config) {
           if (grid_fault & 0x20) { alarms.push('Current Dcover'); gridAlarms.push('Current Dcover'); }
           if (grid_fault & 0x40) { alarms.push('Voltage Dcover'); gridAlarms.push('Voltage Dcover'); }
         }
-      } catch (error) {
-        this.log(`Grid fault register 36100 not available: ${error.message}`);
       }
 
       // Try to read battery fault word (36101) - Battery faults
-      try {
-        const reg_battery_fault = await this.modbus.readHoldingRegisters(slaveId, 36101, 1);
+      const reg_battery_fault = await this._readSafe(slaveId, 36101, 1, 'battery fault word');
+      if (reg_battery_fault) {
         battery_fault = ModbusClient.bufferToUint16(Buffer.concat(reg_battery_fault));
 
         if (battery_fault > 0) {
@@ -1131,8 +1206,6 @@ async writeDeviceName(name, config) {
           if (battery_fault & 0x10) { alarms.push('Battery Communication Failure'); batteryAlarms.push('Battery Communication Failure'); }
           if (battery_fault & 0x20) { alarms.push('BMS Protect'); batteryAlarms.push('BMS Protect'); }
         }
-      } catch (error) {
-        this.log(`Battery fault register 36101 not available: ${error.message}`);
       }
 
       // Register 36103 (hardware fault) deliberately not read - see

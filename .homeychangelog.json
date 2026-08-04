@@ -1,4 +1,7 @@
 {
+  "1.5.12": {
+    "en": "Modbus timeouts no longer snowball. When the battery stops answering, the driver now ends the poll cycle after three failed reads instead of working through every register, and a new poll is skipped while the previous one is still running. The app log names the registers that were skipped and why. Venus E and Venus D."
+  },
   "1.5.11": {
     "en": "Fixed a bug that re-sent the target SOC while the device view was open, pulling batteries into SOC mode while a flow was driving them with target power. The force mode is also no longer left on 'Force to SOC target' after switching to self consumption, AI optimization or manual. Venus E and Venus D."
   },
