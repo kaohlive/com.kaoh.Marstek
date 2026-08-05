@@ -1,4 +1,7 @@
 {
+  "1.5.13": {
+    "en": "Fixes Venus E batteries timing out on every register, with restarting the app making it worse instead of better. Some firmware refuses the firmware-version register and then stops answering at all for the rest of the session, and the driver asked for it again on every reconnect; it is now read once at most and never again on a battery that refuses it. Registers a battery explicitly rejects are no longer retried either. The Firmware field may now show 'xxx' on those devices - cosmetic only."
+  },
   "1.5.12": {
     "en": "Modbus timeouts no longer snowball. When the battery stops answering, the driver now ends the poll cycle after three failed reads instead of working through every register, and a new poll is skipped while the previous one is still running. The app log names the registers that were skipped and why. Venus E and Venus D."
   },

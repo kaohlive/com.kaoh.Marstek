@@ -375,8 +375,14 @@ async writeDeviceName(name, config) {
     // Device info
     data.deviceInfo['31000_device_name'] = await safeRead('name', 31000, 10,
       (r) => ModbusClient.bufferToString(r));
-    data.deviceInfo['31101_firmware'] = await safeRead('firmware', 31101, 1,
-      (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
+    // Skipped once a device has refused 31101: on that hardware the refusal
+    // makes the slave deaf for the rest of the session, which would leave every
+    // register below this line reading "Error: Timed out" and make the dump
+    // both useless and harmful - on the one page support asks users to run.
+    data.deviceInfo['31101_firmware'] = this.getStoreValue('firmware_register_unsupported')
+      ? 'Skipped - this device refuses register 31101 (see app log)'
+      : await safeRead('firmware', 31101, 1,
+        (r) => ModbusClient.bufferToUint16(Buffer.concat(r)));
     data.deviceInfo['32105_total_energy_kwh'] = await safeRead('energy', 32105, 1,
       (r) => ModbusClient.bufferToUint16(Buffer.concat(r)) * 0.001);
 
@@ -493,16 +499,10 @@ async writeDeviceName(name, config) {
       // Simple conversion
       const deviceName = ModbusClient.bufferToString(reg_device_name);
 
-      // Read firmware version from register 31101 (Firmware version)
-      let firmwareVersion='xxx';
-      let firmwareRaw=999;
-      try{
-        const reg_firmware = await this.modbus.readHoldingRegisters(slaveId, 31101, 1);
-        firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg_firmware));
-        firmwareVersion = firmwareRaw.toString(); // Firmware register already contains the correct value
-      } catch (error) {
-        this.log('Device firmware retrieval error:', error);
-      }
+      // Firmware (31101) is deliberately NOT read here - see _readFirmwareOnce.
+      // It is only touched if the device name cannot decide the version, and
+      // otherwise at the very end of this method where a lockup can no longer
+      // cost us the capacity / name / cutoff reads.
       // Determine device version based on device name - more reliable than firmware version
       // V3 devices typically have names like "AC01", while V1/V2 have "limited", "BI_2.5_2.5", etc.
       const deviceNameLower = deviceName.toLowerCase().trim();
@@ -530,18 +530,20 @@ async writeDeviceName(name, config) {
       } else if (deviceNameLower.startsWith('vn')) {
         this.deviceVersion = 'v3';
       } else {
-        // Fallback to firmware version detection if device name is unclear
-        this.deviceVersion = firmwareRaw >= 300 ? 'v3' : 'v1v2';
+        // Fallback to firmware version detection if device name is unclear.
+        // This is the only case where the firmware register is needed rather
+        // than merely nice to display, so it is worth one guarded attempt.
+        const fallbackRaw = await this._readFirmwareOnce(slaveId);
+        this.deviceVersion = (fallbackRaw === null ? 999 : fallbackRaw) >= 300 ? 'v3' : 'v1v2';
         this.log(`Using firmware fallback for version detection - unknown device name: ${deviceName}`);
       }
 
-      this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}", firmware: ${firmwareVersion})`);
+      this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}")`);
 
       //Now store the collected info in read only settings for easy access to the user
       this._setSettingsSafe({
         'storage_capacity': this.batteryCapacity + ' kwh',
         'device_name': deviceName,
-        'firmware': firmwareVersion,
         'device_version': this.deviceVersion
       });
       //We only manage these from Homey since the Marstek app does not allow to control these
@@ -569,9 +571,48 @@ async writeDeviceName(name, config) {
       const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
       console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
       this._setSettingsSafe({ 'discharging_cutoff_soc': discharging_cutoff_soc });
+
+      // Firmware last: it is display-only, and on hardware that refuses 31101
+      // the refusal makes the device deaf for the rest of the session. Reading
+      // it here means that only ever costs us the firmware label itself, never
+      // the values above.
+      const firmwareRaw = await this._readFirmwareOnce(slaveId);
+      this._setSettingsSafe({
+        'firmware': firmwareRaw === null ? 'xxx' : firmwareRaw.toString(),
+      });
     } catch (error) {
       this.log('Device static info error:', error);
       this._setUnavailableSafe(`Retrieval of static info failed: ${error.message}`);
+    }
+  }
+
+  // Register 31101 (firmware version) is answered with a Modbus exception by
+  // some Marstek firmware, and that refusal makes the device stop answering
+  // for the rest of the session - the "deaf after Modbus exception" lockup we
+  // already dropped this register for on the Venus D driver in 1.5.1. Because
+  // processDeviceStaticInfo runs on every 'connect' event, re-reading it on
+  // each reconnect turned one unsupported register into a self-sustaining
+  // timeout loop: exception -> deaf -> poll fails -> reconnect -> exception.
+  //
+  // So: one attempt, no retries, cached for this run, and once a device has
+  // refused it we remember that in the store and never ask again.
+  async _readFirmwareOnce(slaveId) {
+    if (this._firmwareRaw !== undefined) return this._firmwareRaw;
+
+    if (this.getStoreValue('firmware_register_unsupported')) {
+      this._firmwareRaw = null;
+      return null;
+    }
+
+    try {
+      const reg = await this.modbus.readHoldingRegisters(slaveId, 31101, 1, 0);
+      this._firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg));
+      return this._firmwareRaw;
+    } catch (error) {
+      this._firmwareRaw = null;
+      this.setStoreValue('firmware_register_unsupported', true).catch(() => {});
+      this.log(`Firmware register 31101 refused by this device (${error.message}) - it will not be read again. The Firmware setting stays "xxx"; this is cosmetic and does not affect operation.`);
+      return null;
     }
   }
 

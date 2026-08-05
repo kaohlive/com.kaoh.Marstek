@@ -36,6 +36,10 @@ class ModbusClient extends EventEmitter {
   //   [Modbus/PROTOCOL_TIMEOUT] - we DID succeed before; slave has gone silent
   //                            (firmware glitch, slot stolen, idle-disconnect)
   //   [Modbus/NOT_CONNECTED] - our own pre-flight check; reconnect pending
+  //   [Modbus/EXCEPTION]     - the slave answered with a protocol exception
+  //                            (illegal address / illegal function). The device
+  //                            IS talking to us, it just refuses this register.
+  //                            Deterministic, so never worth retrying.
   //   [TCP/UNKNOWN]          - anything we did not categorise
   _classifyError(err) {
     const msg = (err && err.message) ? err.message : '';
@@ -55,6 +59,16 @@ class ModbusClient extends EventEmitter {
         : { tag: '[Modbus/NO_RESPONSE]', code: 'NO_RESPONSE' };
     }
     if (msg.toLowerCase().includes('crc')) return { tag: '[Modbus/CRC]', code: 'CRC' };
+
+    // modbus-serial surfaces a protocol exception response as an Error whose
+    // message reads "Modbus exception <n>: <text>", and sets modbusCode on it.
+    // Retrying one is pointless - the answer is deterministic - and on Marstek
+    // firmware it is actively harmful: the device stops answering entirely
+    // after refusing a register, so every retry burns a full timeout against a
+    // slave that has already gone deaf.
+    if (typeof err?.modbusCode === 'number' || /modbus exception/i.test(msg)) {
+      return { tag: '[Modbus/EXCEPTION]', code: 'EXCEPTION', deterministic: true };
+    }
 
     return { tag: '[TCP/UNKNOWN]', code: code || 'UNKNOWN' };
   }
@@ -228,7 +242,14 @@ class ModbusClient extends EventEmitter {
         // existing device.js callers that do Buffer.concat([...]) keep working.
         return [response.buffer];
       } catch (err) {
-        const { tag } = this._classifyError(err);
+        const { tag, deterministic } = this._classifyError(err);
+        if (deterministic) {
+          // The slave answered - it just refuses this register. Retrying cannot
+          // change that and costs a full timeout each time on hardware that
+          // goes deaf after refusing.
+          console.log(`${tag} Read refused by slave (no retry, slave=${slaveId}, addr=${address}):`, err.message);
+          throw err;
+        }
         if (attempt < retries && this.connected) {
           console.log(`${tag} Read failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
           await new Promise(resolve => setTimeout(resolve, 500));
@@ -251,7 +272,11 @@ class ModbusClient extends EventEmitter {
         this._hasEverSucceeded = true;
         return;
       } catch (err) {
-        const { tag } = this._classifyError(err);
+        const { tag, deterministic } = this._classifyError(err);
+        if (deterministic) {
+          console.log(`${tag} Write refused by slave (no retry, slave=${slaveId}, addr=${address}):`, err.message);
+          throw err;
+        }
         if (attempt < retries && this.connected) {
           console.log(`${tag} Write failed (attempt ${attempt + 1}/${retries + 1}, slave=${slaveId}, addr=${address}):`, err.message);
           await new Promise(resolve => setTimeout(resolve, 500));
