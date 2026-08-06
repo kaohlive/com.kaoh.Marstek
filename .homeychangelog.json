@@ -1,4 +1,7 @@
 {
+  "1.5.17": {
+    "en": "Also releases the battery connections from the app itself when it shuts down, as a backstop for the per-device release added in 1.5.16. Together these should stop a Venus V3 from holding its single connection slot after an app update, which is the cause of 'no data after updating, back again hours later'. This update still goes through the old shutdown path, so the improvement applies from the next one onwards."
+  },
   "1.5.16": {
     "en": "The app now closes its connection to each battery when it stops or updates. It never did before, so after an app update a Venus V3 could keep its single Modbus connection slot occupied and refuse the new connection until the battery timed the old one out by itself - the familiar 'no data after an update, back again a few hours later'. This update itself still goes through the old shutdown, so the improvement applies from the next one onwards."
   },

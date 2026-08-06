@@ -1709,6 +1709,11 @@ class VenusDDevice extends Homey.Device {
   // driver for the full rationale. Bounded, because Homey's shutdown window is
   // short and a half-dead socket may never deliver its close callback.
   async onUninit() {
+    // Also reachable from the app-level onUninit; releasing twice is harmless
+    // but should not add noise to the log.
+    if (this._released) return;
+    this._released = true;
+
     this.log('Device uninit (app stopping or updating) - releasing the Modbus connection');
     this._isDeleted = true;
     this.stopPolling();

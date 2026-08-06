@@ -2056,6 +2056,13 @@ async writeDeviceName(name, config) {
   // matters is that we call it at all. The wait is bounded so we never block
   // shutdown waiting for a callback that a half-dead socket may never deliver.
   async onUninit() {
+    // The app-level onUninit calls this too, so it can run twice on a single
+    // shutdown. Releasing twice is harmless (disconnect drops the client
+    // reference first) but the second pass has nothing to do and should not
+    // add noise to a log we are asking users to read.
+    if (this._released) return;
+    this._released = true;
+
     this.log('Device uninit (app stopping or updating) - releasing the Modbus connection');
     // Same meaning as on delete: this instance must stop touching the device
     // and the Homey APIs from here on.
