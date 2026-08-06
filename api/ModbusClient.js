@@ -345,6 +345,9 @@ class ModbusClient extends EventEmitter {
     return this.connected;
   }
 
+  // Returns the close promise so callers that need the socket to be really
+  // gone - app shutdown, above all - can await it. Existing callers ignore the
+  // return value and keep their fire-and-forget behaviour.
   disconnect() {
     this.clearReconnectInterval();
 
@@ -353,7 +356,7 @@ class ModbusClient extends EventEmitter {
     this.connected = false;
     this.config = null;
 
-    this._closeClient(oldClient).catch(() => {});
+    return this._closeClient(oldClient).catch(() => {});
   }
 
   // Utility functions

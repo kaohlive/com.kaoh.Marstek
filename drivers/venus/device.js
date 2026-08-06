@@ -299,11 +299,12 @@ async writeDeviceName(name, config) {
     }
   }
 
+  // Returns a promise so onUninit can wait for the socket to actually close.
   disconnectModbus() {
-    if (this.modbus) {
-      this.modbus.disconnect();
-      this.log('Disconnected from Modbus device');
-    }
+    if (!this.modbus) return Promise.resolve();
+    const closed = this.modbus.disconnect();
+    this.log('Disconnected from Modbus device');
+    return Promise.resolve(closed);
   }
 
   // ============================================
@@ -2035,7 +2036,40 @@ async writeDeviceName(name, config) {
     // Set flag immediately to prevent any pending poll operations
     this._isDeleted = true;
     this.stopPolling();
-    this.disconnectModbus();
+    await this.disconnectModbus();
+  }
+
+  // Called by Homey when this device instance is torn down: app stop, app
+  // update, app reinstall. Until now nothing ran here, so on every app update
+  // our Modbus sockets were never closed - the process was simply killed.
+  //
+  // That matters because the Venus V3 serves one Modbus TCP client at a time.
+  // With no clean close the battery keeps its single slot marked busy, and the
+  // freshly started app completes the TCP handshake but gets no answer to any
+  // request until the firmware eventually times the stale session out. That is
+  // the "every V3 falls over after an app update and comes back hours later"
+  // pattern, and its log signature is exactly this: socket open, zero answers,
+  // no protocol errors.
+  //
+  // Best effort by nature - Homey's shutdown window is short and it may still
+  // terminate us - but the FIN goes out the moment close() is called, so what
+  // matters is that we call it at all. The wait is bounded so we never block
+  // shutdown waiting for a callback that a half-dead socket may never deliver.
+  async onUninit() {
+    this.log('Device uninit (app stopping or updating) - releasing the Modbus connection');
+    // Same meaning as on delete: this instance must stop touching the device
+    // and the Homey APIs from here on.
+    this._isDeleted = true;
+    this.stopPolling();
+    try {
+      await Promise.race([
+        this.disconnectModbus(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+      this.log('Modbus connection released');
+    } catch (err) {
+      this.log('Error releasing Modbus connection on uninit:', err.message);
+    }
   }
 
   // ============================================

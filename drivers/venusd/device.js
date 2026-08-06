@@ -215,11 +215,12 @@ class VenusDDevice extends Homey.Device {
     }
   }
 
+  // Returns a promise so onUninit can wait for the socket to actually close.
   disconnectModbus() {
-    if (this.modbus) {
-      this.modbus.disconnect();
-      this.log('Disconnected from Modbus device');
-    }
+    if (!this.modbus) return Promise.resolve();
+    const closed = this.modbus.disconnect();
+    this.log('Disconnected from Modbus device');
+    return Promise.resolve(closed);
   }
 
   // Diagnostic API delegates - called via app.js endpoints from the
@@ -1699,7 +1700,27 @@ class VenusDDevice extends Homey.Device {
     this.log('VenusDDevice deleted');
     this._isDeleted = true;
     this.stopPolling();
-    this.disconnectModbus();
+    await this.disconnectModbus();
+  }
+
+  // Called by Homey on app stop / update / reinstall. Closes the Modbus socket
+  // so the battery releases its single client slot immediately instead of
+  // holding it until the firmware times the stale session out. See the Venus E
+  // driver for the full rationale. Bounded, because Homey's shutdown window is
+  // short and a half-dead socket may never deliver its close callback.
+  async onUninit() {
+    this.log('Device uninit (app stopping or updating) - releasing the Modbus connection');
+    this._isDeleted = true;
+    this.stopPolling();
+    try {
+      await Promise.race([
+        this.disconnectModbus(),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+      this.log('Modbus connection released');
+    } catch (err) {
+      this.log('Error releasing Modbus connection on uninit:', err.message);
+    }
   }
 }
 

@@ -1,4 +1,7 @@
 {
+  "1.5.16": {
+    "en": "The app now closes its connection to each battery when it stops or updates. It never did before, so after an app update a Venus V3 could keep its single Modbus connection slot occupied and refuse the new connection until the battery timed the old one out by itself - the familiar 'no data after an update, back again a few hours later'. This update itself still goes through the old shutdown, so the improvement applies from the next one onwards."
+  },
   "1.5.15": {
     "en": "Changing the connection timeout now takes effect immediately. It was saved and confirmed in the log, but the running connection kept using the old value until the device happened to reconnect - so raising it to give a slow battery more time appeared to do nothing. Worth re-checking this setting if you tuned it while troubleshooting."
   },
