@@ -70,6 +70,7 @@ class VenusDDevice extends Homey.Device {
     this._pollInFlight = false;
     this._pollStartedAt = 0;
     this._pollSkippedTicks = 0;
+    this._pollGeneration = 0;
     this._pollConsecutiveFails = 0;
     this._pollBreakerTripped = false;
     this._pollSkippedLabels = [];
@@ -436,12 +437,24 @@ class VenusDDevice extends Homey.Device {
     // Re-entrancy guard: setInterval does not await its callback, so a cycle
     // running longer than poll_interval used to have another cycle stacked on
     // top of it on the same connection. Skip the tick and say so.
+    //
+    // With a watchdog: "skip while busy" is only safe if a cycle always
+    // finishes, and an unbounded await inside it would otherwise silence this
+    // device permanently. See the Venus E driver for the full rationale.
     if (this._pollInFlight) {
-      this._pollSkippedTicks++;
-      this.log(`[poll] Tick skipped: previous cycle still running after ${Date.now() - this._pollStartedAt}ms (${this._pollSkippedTicks} tick(s) skipped so far)`);
-      return;
+      const stalledFor = Date.now() - this._pollStartedAt;
+      const stallLimit = Math.max(90000, (this.settings.poll_interval || 5000) * 6);
+      if (stalledFor <= stallLimit) {
+        this._pollSkippedTicks++;
+        this.log(`[poll] Tick skipped: previous cycle still running after ${stalledFor}ms (${this._pollSkippedTicks} tick(s) skipped so far)`);
+        return;
+      }
+      this.log(`[poll] Previous cycle has been stuck for ${stalledFor}ms (limit ${stallLimit}ms) after ${this._pollSkippedTicks} skipped tick(s) - abandoning it and starting a fresh cycle.`);
     }
 
+    // Coalesced rather than ++: an undefined counter would make this NaN, and
+    // NaN !== NaN means the finally below would never clear the in-flight flag.
+    const generation = this._pollGeneration = (this._pollGeneration || 0) + 1;
     this._pollInFlight = true;
     this._pollStartedAt = Date.now();
     this._pollSkippedTicks = 0;
@@ -508,7 +521,13 @@ class VenusDDevice extends Homey.Device {
     } finally {
       // Must clear on every exit path, including the connect-failure return
       // above - a stuck flag would silence polling until the app restarts.
-      this._pollInFlight = false;
+      // Only if we are still the current cycle: an abandoned cycle that settles
+      // late must not clear the flag of the cycle that replaced it.
+      if (generation === this._pollGeneration) {
+        this._pollInFlight = false;
+      } else {
+        this.log(`[poll] Abandoned cycle ${generation} finished late; current cycle ${this._pollGeneration} keeps running.`);
+      }
     }
   }
 

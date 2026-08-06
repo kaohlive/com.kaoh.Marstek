@@ -1,4 +1,7 @@
 {
+  "1.5.14": {
+    "en": "Fixes a battery that stops polling entirely and never recovers until the app is restarted. Closing a dead Modbus connection could hang forever, and since 1.5.12 that left the poll cycle stuck with no way out - one tester had a battery frozen for over two hours. Closing is now time-limited, and a poll cycle that stalls is abandoned so the next one can run."
+  },
   "1.5.13": {
     "en": "Fixes Venus E batteries timing out on every register, with restarting the app making it worse instead of better. Some firmware refuses the firmware-version register and then stops answering at all for the rest of the session, and the driver asked for it again on every reconnect; it is now read once at most and never again on a battery that refuses it. Registers a battery explicitly rejects are no longer retried either. The Firmware field may now show 'xxx' on those devices - cosmetic only."
   },

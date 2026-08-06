@@ -128,13 +128,35 @@ class ModbusClient extends EventEmitter {
     return this.client && this.client._port && this.client._port._client;
   }
 
+  // Bounded close. modbus-serial does not reliably invoke the close callback -
+  // a half-dead socket can swallow it - and this promise is awaited from
+  // connect(), which runs inside the poll cycle. An unbounded wait here is how
+  // a device ends up with a poll cycle that never finishes and therefore never
+  // polls again. Abandoning the old client after the timeout is safe: we have
+  // already dropped our reference to it, so its 'close' event cannot trigger a
+  // reconnect, and it is garbage once the socket finally dies.
   _closeClient(client) {
     return new Promise((resolve) => {
       if (!client) return resolve();
-      try {
-        client.close(() => resolve());
-      } catch (e) {
+      let settled = false;
+      const finish = (reason) => {
+        if (settled) return;
+        settled = true;
+        if (reason) console.log(`[TCP] ${reason}`);
         resolve();
+      };
+      const timer = setTimeout(
+        () => finish('close() did not call back within 5000ms - abandoning the old client'),
+        5000,
+      );
+      try {
+        client.close(() => {
+          clearTimeout(timer);
+          finish();
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        finish();
       }
     });
   }

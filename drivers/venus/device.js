@@ -36,6 +36,7 @@ class VenusBatteryDevice extends Homey.Device {
     this._pollInFlight = false;
     this._pollStartedAt = 0;
     this._pollSkippedTicks = 0;
+    this._pollGeneration = 0;
     this._pollConsecutiveFails = 0;
     this._pollBreakerTripped = false;
     this._pollSkippedLabels = [];
@@ -627,12 +628,30 @@ async writeDeviceName(name, config) {
     // start timing out - every tick used to start another overlapping cycle on
     // the same connection, stacking dozens deep. Skip the tick instead, and
     // say so rather than silently dropping it.
+    //
+    // With a watchdog, because "skip while busy" alone is only safe if a cycle
+    // is guaranteed to finish. It is not: any unbounded await inside the cycle
+    // (a Modbus close that never calls back, for instance) would otherwise
+    // silence this device permanently - one tester sat at 4068 skipped ticks
+    // over 2h19m. Past the stall limit we abandon the stuck cycle and start a
+    // fresh one; the generation counter stops the orphan from clearing the new
+    // cycle's flag when it finally settles.
     if (this._pollInFlight) {
-      this._pollSkippedTicks++;
-      this.log(`[poll] Tick skipped: previous cycle still running after ${Date.now() - this._pollStartedAt}ms (${this._pollSkippedTicks} tick(s) skipped so far)`);
-      return;
+      const stalledFor = Date.now() - this._pollStartedAt;
+      const stallLimit = Math.max(90000, (this.settings.poll_interval || 5000) * 6);
+      if (stalledFor <= stallLimit) {
+        this._pollSkippedTicks++;
+        this.log(`[poll] Tick skipped: previous cycle still running after ${stalledFor}ms (${this._pollSkippedTicks} tick(s) skipped so far)`);
+        return;
+      }
+      this.log(`[poll] Previous cycle has been stuck for ${stalledFor}ms (limit ${stallLimit}ms) after ${this._pollSkippedTicks} skipped tick(s) - abandoning it and starting a fresh cycle.`);
     }
 
+    // Coalesced rather than ++: an undefined counter would make this NaN, and
+    // NaN !== NaN means the finally below would never clear the in-flight flag
+    // - silencing this device permanently, the exact failure this watchdog
+    // exists to prevent.
+    const generation = this._pollGeneration = (this._pollGeneration || 0) + 1;
     this._pollInFlight = true;
     this._pollStartedAt = Date.now();
     this._pollSkippedTicks = 0;
@@ -707,7 +726,13 @@ async writeDeviceName(name, config) {
     } finally {
       // Must clear on every exit path, including the connect-failure return
       // above - a stuck flag would silence polling until the app restarts.
-      this._pollInFlight = false;
+      // Only if we are still the current cycle: an abandoned cycle that settles
+      // late must not clear the flag of the cycle that replaced it.
+      if (generation === this._pollGeneration) {
+        this._pollInFlight = false;
+      } else {
+        this.log(`[poll] Abandoned cycle ${generation} finished late after ${Date.now() - this._pollStartedAt}ms; current cycle ${this._pollGeneration} keeps running.`);
+      }
     }
   }
 
