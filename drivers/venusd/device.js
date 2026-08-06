@@ -59,7 +59,7 @@ class VenusDDevice extends Homey.Device {
     this.modbus = new ModbusClient();
 
     if (this.settings.connection_timeout) {
-      this.modbus.connectionTimeout = this.settings.connection_timeout;
+      this.modbus.setConnectionTimeout(this.settings.connection_timeout);
     }
 
     this.previousValues = {};
@@ -166,8 +166,11 @@ class VenusDDevice extends Homey.Device {
     this.log('Settings changed:', changedKeys);
     this.settings = newSettings;
 
+    // Live connection too, not just the next one - see
+    // ModbusClient.setConnectionTimeout.
     if (changedKeys.includes('connection_timeout')) {
-      this.modbus.connectionTimeout = newSettings.connection_timeout;
+      const live = this.modbus.setConnectionTimeout(newSettings.connection_timeout);
+      this.log(`Connection timeout updated to ${newSettings.connection_timeout}ms (${live ? 'applied to the current connection' : 'no client yet, applies on connect'})`);
     }
     if (changedKeys.includes('max_consecutive_errors')) {
       this.maxConsecutiveErrors = newSettings.max_consecutive_errors;

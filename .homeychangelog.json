@@ -1,4 +1,7 @@
 {
+  "1.5.15": {
+    "en": "Changing the connection timeout now takes effect immediately. It was saved and confirmed in the log, but the running connection kept using the old value until the device happened to reconnect - so raising it to give a slow battery more time appeared to do nothing. Worth re-checking this setting if you tuned it while troubleshooting."
+  },
   "1.5.14": {
     "en": "Fixes a battery that stops polling entirely and never recovers until the app is restarted. Closing a dead Modbus connection could hang forever, and since 1.5.12 that left the poll cycle stuck with no way out - one tester had a battery frozen for over two hours. Closing is now time-limited, and a poll cycle that stalls is abandoned so the next one can run."
   },

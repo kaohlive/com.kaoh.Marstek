@@ -19,7 +19,7 @@ class VenusBatteryDevice extends Homey.Device {
 
     // Apply connection timeout setting to ModbusClient
     if (this.settings.connection_timeout) {
-      this.modbus.connectionTimeout = this.settings.connection_timeout;
+      this.modbus.setConnectionTimeout(this.settings.connection_timeout);
     }
 
     // Previous values for event detection
@@ -148,10 +148,11 @@ class VenusBatteryDevice extends Homey.Device {
     // Update settings
     this.settings = newSettings;
 
-    // Apply connection timeout changes
+    // Apply connection timeout changes to the live connection, not just to the
+    // next one - see ModbusClient.setConnectionTimeout.
     if (changedKeys.includes('connection_timeout')) {
-      this.modbus.connectionTimeout = newSettings.connection_timeout;
-      this.log(`Connection timeout updated to ${newSettings.connection_timeout}ms`);
+      const live = this.modbus.setConnectionTimeout(newSettings.connection_timeout);
+      this.log(`Connection timeout updated to ${newSettings.connection_timeout}ms (${live ? 'applied to the current connection' : 'no client yet, applies on connect'})`);
     }
 
     // Apply max consecutive errors changes

@@ -73,6 +73,21 @@ class ModbusClient extends EventEmitter {
     return { tag: '[TCP/UNKNOWN]', code: code || 'UNKNOWN' };
   }
 
+  // Apply a transaction timeout to the LIVE client as well as to future
+  // connections. Assigning this.connectionTimeout on its own is not enough:
+  // client.setTimeout() is only called from connect(), and connectModbus()
+  // skips connecting while the socket is still up. A user could therefore
+  // change the setting, see it saved and logged, and have the old timeout stay
+  // in force indefinitely. Returns whether it reached a live client.
+  setConnectionTimeout(ms) {
+    this.connectionTimeout = ms;
+    if (this.client && typeof this.client.setTimeout === 'function') {
+      this.client.setTimeout(ms);
+      return true;
+    }
+    return false;
+  }
+
   async connect(config) {
     this.config = config;
 
