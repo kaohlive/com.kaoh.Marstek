@@ -66,11 +66,23 @@ class ModbusClient extends EventEmitter {
     // firmware it is actively harmful: the device stops answering entirely
     // after refusing a register, so every retry burns a full timeout against a
     // slave that has already gone deaf.
-    if (typeof err?.modbusCode === 'number' || /modbus exception/i.test(msg)) {
+    if (ModbusClient.isProtocolException(err)) {
       return { tag: '[Modbus/EXCEPTION]', code: 'EXCEPTION', deterministic: true };
     }
 
     return { tag: '[TCP/UNKNOWN]', code: code || 'UNKNOWN' };
+  }
+
+  // True when the slave answered with a protocol exception (illegal data
+  // address, illegal function, ...) rather than failing to answer at all.
+  // Two things follow, and both matter:
+  //  - the answer is deterministic, so retrying is pointless
+  //  - the device demonstrably IS talking to us, so this is not a bus fault
+  // Callers use it to remember that a register does not exist on this
+  // firmware instead of asking for it again every cycle.
+  static isProtocolException(err) {
+    const msg = (err && err.message) ? err.message : '';
+    return typeof err?.modbusCode === 'number' || /modbus exception/i.test(msg);
   }
 
   // Apply a transaction timeout to the LIVE client as well as to future

@@ -45,6 +45,16 @@ class VenusBatteryDevice extends Homey.Device {
     // dead and the remaining reads are skipped.
     this.POLL_BREAKER_THRESHOLD = 3;
 
+    // Registers this firmware answered with a protocol exception. Marstek
+    // firmware stops responding on a TCP session after refusing a register, so
+    // asking again does not just waste a round trip - it takes the whole
+    // session down with it. Persisted, so a device only ever pays for the
+    // discovery once. See _readSafe / _writeSafe / _markRegisterUnsupported.
+    this._unsupportedRegisters = new Set(this.getStoreValue('unsupported_registers') || []);
+    if (this._unsupportedRegisters.size > 0) {
+      this.log(`Registers known to be unsupported by this device: ${[...this._unsupportedRegisters].join(', ')} - they will not be read or written`);
+    }
+
     // Mode-events ringbuffer for write/read latency diagnostics. Passive: only
     // records timestamps and raw register values to support data-driven tuning
     // of work-mode write→stable-read behaviour. Bounded to prevent unbounded
@@ -367,10 +377,21 @@ async writeDeviceName(name, config) {
     };
 
     const safeRead = async (label, addr, count, transform) => {
+      // Never probe a register this firmware already refused: the refusal takes
+      // the Modbus session down, which would leave every register below this
+      // one reading "Error: Timed out" - on the one page support asks users to
+      // run.
+      if (this._registerBlocked(addr)) {
+        return 'Skipped - not supported by this firmware (see app log)';
+      }
       try {
         const r = await this.modbus.readHoldingRegisters(slaveId, addr, count);
         return transform(r);
       } catch (e) {
+        if (ModbusClient.isProtocolException(e)) {
+          await this._markRegisterUnsupported(addr, label, e);
+          return 'Not supported by this firmware';
+        }
         return 'Error: ' + e.message;
       }
     };
@@ -495,10 +516,16 @@ async writeDeviceName(name, config) {
   {
     try{
       // Battery total energy, this is the capacity of the device, not chaning (0.001kwh resolution)
-      const reg_energy = await this.modbus.readHoldingRegisters(slaveId, 32105, 1);
+      const reg_energy = await this._readStaticSafe(slaveId, 32105, 1, 'battery capacity');
+      if (!reg_energy) {
+        throw new Error('Register 32105 (battery capacity) is refused by this firmware - the device cannot be driven without it');
+      }
       this.batteryCapacity = ModbusClient.bufferToUint16(Buffer.concat(reg_energy)) * 0.001; // Now in kwh
 
-      const reg_device_name = await this.modbus.readHoldingRegisters(slaveId, 31000, 10);
+      const reg_device_name = await this._readStaticSafe(slaveId, 31000, 10, 'device name');
+      if (!reg_device_name) {
+        throw new Error('Register 31000 (device name) is refused by this firmware - cannot identify this device');
+      }
       // Simple conversion
       const deviceName = ModbusClient.bufferToString(reg_device_name);
 
@@ -551,29 +578,43 @@ async writeDeviceName(name, config) {
       });
       //We only manage these from Homey since the Marstek app does not allow to control these
       //Force charge power
-      const reg_forcecharge = await this.modbus.readHoldingRegisters(slaveId, 42020, 1);
-      const force_charge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcecharge));
-      console.log('current charge power forced setting :'+force_charge);
-      this.setCapabilityValue('force_charge_power', force_charge).catch(this.error);
+      const reg_forcecharge = await this._readStaticSafe(slaveId, 42020, 1, 'force charge power');
+      if (reg_forcecharge) {
+        const force_charge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcecharge));
+        console.log('current charge power forced setting :'+force_charge);
+        this.setCapabilityValue('force_charge_power', force_charge).catch(this.error);
+      }
       //Force discharge power
-      const reg_forcedischarge = await this.modbus.readHoldingRegisters(slaveId, 42021, 1);
-      const force_discharge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcedischarge));
-      console.log('current discharge power forced setting :'+force_discharge);
-      this.setCapabilityValue('force_discharge_power', force_discharge).catch(this.error);
+      const reg_forcedischarge = await this._readStaticSafe(slaveId, 42021, 1, 'force discharge power');
+      if (reg_forcedischarge) {
+        const force_discharge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcedischarge));
+        console.log('current discharge power forced setting :'+force_discharge);
+        this.setCapabilityValue('force_discharge_power', force_discharge).catch(this.error);
+      }
+
+      // The cutoff-SOC pair and the firmware string go last on purpose. These
+      // are the registers field reports show some firmware refusing, and a
+      // refusal takes the Modbus session down with it. Reading them after
+      // everything else means the discovery cycle still delivers all the real
+      // data; from the next cycle on they are skipped entirely.
 
       // Read charging cutoff SOC (register 44000) - resolution 0.1%
-      const reg_charging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44000, 1);
-      const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
-      const charging_cutoff_soc = charging_cutoff_raw * 0.1;
-      console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
-      this._setSettingsSafe({ 'charging_cutoff_soc': charging_cutoff_soc });
+      const reg_charging_cutoff = await this._readStaticSafe(slaveId, 44000, 1, 'charging cutoff SOC');
+      if (reg_charging_cutoff) {
+        const charging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff));
+        const charging_cutoff_soc = charging_cutoff_raw * 0.1;
+        console.log('Charging cutoff SOC: ' + charging_cutoff_soc + '%');
+        this._setSettingsSafe({ 'charging_cutoff_soc': charging_cutoff_soc });
+      }
 
       // Read discharging cutoff SOC (register 44001) - resolution 0.1%
-      const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
-      const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
-      const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
-      console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
-      this._setSettingsSafe({ 'discharging_cutoff_soc': discharging_cutoff_soc });
+      const reg_discharging_cutoff = await this._readStaticSafe(slaveId, 44001, 1, 'discharging cutoff SOC');
+      if (reg_discharging_cutoff) {
+        const discharging_cutoff_raw = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff));
+        const discharging_cutoff_soc = discharging_cutoff_raw * 0.1;
+        console.log('Discharging cutoff SOC: ' + discharging_cutoff_soc + '%');
+        this._setSettingsSafe({ 'discharging_cutoff_soc': discharging_cutoff_soc });
+      }
 
       // Firmware last: it is display-only, and on hardware that refuses 31101
       // the refusal makes the device deaf for the rest of the session. Reading
@@ -602,7 +643,10 @@ async writeDeviceName(name, config) {
   async _readFirmwareOnce(slaveId) {
     if (this._firmwareRaw !== undefined) return this._firmwareRaw;
 
-    if (this.getStoreValue('firmware_register_unsupported')) {
+    // The 1.5.13 flag predates the generic unsupported-register list; honour it
+    // so devices that already discovered this do not probe again.
+    if (this.getStoreValue('firmware_register_unsupported')
+        || this._registerBlocked(31101)) {
       this._firmwareRaw = null;
       return null;
     }
@@ -613,8 +657,9 @@ async writeDeviceName(name, config) {
       return this._firmwareRaw;
     } catch (error) {
       this._firmwareRaw = null;
+      await this._markRegisterUnsupported(31101, 'firmware version', error);
       this.setStoreValue('firmware_register_unsupported', true).catch(() => {});
-      this.log(`Firmware register 31101 refused by this device (${error.message}) - it will not be read again. The Firmware setting stays "xxx"; this is cosmetic and does not affect operation.`);
+      this.log('The Firmware setting stays "xxx" on this device; that is cosmetic and does not affect operation.');
       return null;
     }
   }
@@ -774,6 +819,9 @@ async writeDeviceName(name, config) {
   // that caused it, and pollData logs the full list of registers that were
   // not read at the end of the cycle.
   async _readSafe(slaveId, address, count, label) {
+    // Known not to exist on this firmware - never touch the wire again.
+    if (this._registerBlocked(address)) return null;
+
     if (this._pollBreakerTripped) {
       this._pollSkippedLabels.push(`${address}/${label}`);
       return null;
@@ -791,6 +839,14 @@ async writeDeviceName(name, config) {
       return buf;
     } catch (err) {
       this._pollReadsFail++;
+      // A protocol exception is not a bus failure - the device answered, it
+      // just refuses this register. It must therefore NOT count toward the
+      // circuit breaker (the bus is demonstrably alive), and the register is
+      // retired instead of retried.
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, label, err);
+        return null;
+      }
       this._pollConsecutiveFails++;
       const msg = (err && err.message) ? err.message : String(err);
       this.log(`Register ${address} (${label}) read failed: ${msg}`);
@@ -799,6 +855,69 @@ async writeDeviceName(name, config) {
         this.log(`[poll] Circuit breaker tripped: ${this._pollConsecutiveFails} consecutive read failures, last ${address} (${label}). Skipping the remaining registers this cycle to stop loading the bus; the next cycle probes with retries disabled.`);
       }
       return null;
+    }
+  }
+
+  // Retire a register the firmware refuses. Persisted so the discovery is paid
+  // for once per device rather than once per app start, and logged loudly:
+  // whatever this register fed is now unavailable, and a user staring at an
+  // empty tile or a failing flow card deserves to find the reason in the log.
+  // Lazily initialised so a read can never depend on onInit having reached the
+  // field: a missing Set would make every _readSafe throw, and the process-block
+  // catch would swallow it into a silently empty poll cycle.
+  _registerBlocked(address) {
+    if (!this._unsupportedRegisters) {
+      this._unsupportedRegisters = new Set(this.getStoreValue('unsupported_registers') || []);
+    }
+    return this._unsupportedRegisters.has(address);
+  }
+
+  async _markRegisterUnsupported(address, label, error) {
+    if (this._registerBlocked(address)) return;
+    this._unsupportedRegisters.add(address);
+    const msg = (error && error.message) ? error.message : String(error);
+    this.log(`[registers] ${address} (${label}) is not supported by this device's firmware (${msg}). It will not be read or written again - anything that depends on it is unavailable on this device.`);
+    try {
+      await this.setStoreValue('unsupported_registers', [...this._unsupportedRegisters]);
+    } catch (err) {
+      this.log(`[registers] Could not persist the unsupported-register list: ${err.message}`);
+    }
+  }
+
+  // Guarded read for processDeviceStaticInfo. A refused register is remembered
+  // and reported as null so the rest of the static info still loads; anything
+  // else (a timeout, a dead socket) still propagates, because that genuinely
+  // means we could not talk to the device.
+  async _readStaticSafe(slaveId, address, count, label) {
+    if (this._registerBlocked(address)) return null;
+    try {
+      return await this.modbus.readHoldingRegisters(slaveId, address, count);
+    } catch (err) {
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, label, err);
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  // Guarded write. Refusing to write a register the firmware does not have is
+  // the whole point: on this hardware the refusal takes the Modbus session
+  // down, and a flow that fires every half hour would otherwise keep doing it.
+  // Always throws on failure - a flow card must fail visibly rather than
+  // silently pretend it set something.
+  async _writeSafe(slaveId, address, value, label) {
+    if (this._registerBlocked(address)) {
+      throw new Error(`${label} is not supported by this battery's firmware (register ${address}) - the setting cannot be changed from Homey`);
+    }
+    try {
+      await this.modbus.writeSingleRegister(slaveId, address, value);
+    } catch (err) {
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, label, err);
+        throw new Error(`${label} is not supported by this battery's firmware (register ${address}) - the setting cannot be changed from Homey`);
+      }
+      throw err;
     }
   }
 
@@ -2240,6 +2359,13 @@ async writeDeviceName(name, config) {
    * @returns {boolean} - True if current setting is above threshold
    */
   async conditionChargingCutoffSocAbove(args) {
+    // Deliberately throws rather than falling back to 100 when the firmware
+    // does not have this register: the setting then reflects nothing on the
+    // device, so a comparison against it would be silently wrong. A failing
+    // flow is visible; a flow branching on a made-up number is not.
+    if (this._registerBlocked(44000)) {
+      throw new Error("This battery's firmware does not support the charging cutoff SOC register - this condition cannot be evaluated");
+    }
     try {
       const currentSoc = this.getSetting('charging_cutoff_soc') || 100;
       const threshold = Number(args.percentage);
@@ -2259,6 +2385,10 @@ async writeDeviceName(name, config) {
    * @returns {boolean} - True if current setting is above threshold
    */
   async conditionDischargingCutoffSocAbove(args) {
+    // See conditionChargingCutoffSocAbove for why this throws.
+    if (this._registerBlocked(44001)) {
+      throw new Error("This battery's firmware does not support the discharging cutoff SOC register - this condition cannot be evaluated");
+    }
     try {
       const currentSoc = this.getSetting('discharging_cutoff_soc') || 15;
       const threshold = Number(args.percentage);
@@ -2491,7 +2621,7 @@ async writeDeviceName(name, config) {
       this.log(`Writing charging cutoff SOC: ${clampedPercentage}% (register value: ${registerValue}) to register 44000`);
       // Enable RS485 control before writing to register
       await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
-      await this.modbus.writeSingleRegister(slaveId, 44000, registerValue);
+      await this._writeSafe(slaveId, 44000, registerValue, 'Charging cutoff SOC');
 
       this.log('Charging cutoff SOC written successfully');
     } catch (error) {
@@ -2523,7 +2653,7 @@ async writeDeviceName(name, config) {
       this.log(`Writing discharging cutoff SOC: ${clampedPercentage}% (register value: ${registerValue}) to register 44001`);
       // Enable RS485 control before writing to register
       await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
-      await this.modbus.writeSingleRegister(slaveId, 44001, registerValue);
+      await this._writeSafe(slaveId, 44001, registerValue, 'Discharging cutoff SOC');
 
       this.log('Discharging cutoff SOC written successfully');
     } catch (error) {

@@ -79,6 +79,14 @@ class VenusDDevice extends Homey.Device {
     // dead and the remaining reads are skipped.
     this.POLL_BREAKER_THRESHOLD = 3;
 
+    // Registers this firmware answered with a protocol exception. Marstek
+    // firmware stops responding on a TCP session after refusing a register, so
+    // they are retired rather than retried. Persisted per device.
+    this._unsupportedRegisters = new Set(this.getStoreValue('unsupported_registers') || []);
+    if (this._unsupportedRegisters.size > 0) {
+      this.log(`Registers known to be unsupported by this device: ${[...this._unsupportedRegisters].join(', ')} - they will not be read or written`);
+    }
+
     this.setupModbusHandlers();
     await this.repairCapabilities();
     this.startPolling();
@@ -273,10 +281,19 @@ class VenusDDevice extends Homey.Device {
       protectionSettings: {},
     };
     const safeRead = async (label, addr, count, transform) => {
+      // Never re-probe a refused register: the refusal takes the session down,
+      // which would leave every register below it reading "Error: Timed out".
+      if (this._registerBlocked(addr)) {
+        return 'Skipped - not supported by this firmware (see app log)';
+      }
       try {
         const r = await this.modbus.readHoldingRegisters(slaveId, addr, count);
         return transform(r);
       } catch (e) {
+        if (ModbusClient.isProtocolException(e)) {
+          await this._markRegisterUnsupported(addr, label, e);
+          return 'Not supported by this firmware';
+        }
         return 'Error: ' + e.message;
       }
     };
@@ -378,10 +395,16 @@ class VenusDDevice extends Homey.Device {
       // (v147 used 0.01 - if a very old firmware shows 10x too low
       // capacity in settings, this is the cause. Not worth guarding
       // for since Duravolt v1.1 protocol was v148+.)
-      const reg_energy = await this.modbus.readHoldingRegisters(slaveId, 32105, 1);
+      const reg_energy = await this._readStaticSafe(slaveId, 32105, 1, 'battery capacity');
+      if (!reg_energy) {
+        throw new Error('Register 32105 (battery capacity) is refused by this firmware - the device cannot be driven without it');
+      }
       this.batteryCapacity = ModbusClient.bufferToUint16(Buffer.concat(reg_energy)) * 0.001;
 
-      const reg_name = await this.modbus.readHoldingRegisters(slaveId, 31000, 10);
+      const reg_name = await this._readStaticSafe(slaveId, 31000, 10, 'device name');
+      if (!reg_name) {
+        throw new Error('Register 31000 (device name) is refused by this firmware - cannot identify this device');
+      }
       const deviceName = ModbusClient.bufferToString(reg_name);
 
       // 31101 firmware register deliberately not read on Venus D - see
@@ -398,36 +421,33 @@ class VenusDDevice extends Homey.Device {
       });
 
       // Force charge/discharge power settings (writable controls)
-      try {
-        const reg_forcecharge = await this.modbus.readHoldingRegisters(slaveId, 42020, 1);
+      const reg_forcecharge = await this._readStaticSafe(slaveId, 42020, 1, 'force charge power');
+      if (reg_forcecharge) {
         const force_charge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcecharge));
         this.setCapabilityValue('force_charge_power', force_charge).catch(this.error);
-      } catch (e) {
-        this.log('force_charge_power read failed:', e.message);
       }
-      try {
-        const reg_forcedischarge = await this.modbus.readHoldingRegisters(slaveId, 42021, 1);
+      const reg_forcedischarge = await this._readStaticSafe(slaveId, 42021, 1, 'force discharge power');
+      if (reg_forcedischarge) {
         const force_discharge = ModbusClient.bufferToUint16(Buffer.concat(reg_forcedischarge));
         this.setCapabilityValue('force_discharge_power', force_discharge).catch(this.error);
-      } catch (e) {
-        this.log('force_discharge_power read failed:', e.message);
       }
 
+      // Cutoff pair last on purpose: these are the registers some firmware
+      // refuses, and a refusal takes the Modbus session down with it. Reading
+      // them after everything else means the discovery cycle still delivers
+      // all the real data.
+
       // Charging cutoff SOC (register 44000, 0.1% resolution)
-      try {
-        const reg_charging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44000, 1);
+      const reg_charging_cutoff = await this._readStaticSafe(slaveId, 44000, 1, 'charging cutoff SOC');
+      if (reg_charging_cutoff) {
         const charging_cutoff_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_charging_cutoff)) * 0.1;
         this._setSettingsSafe({ charging_cutoff_soc });
-      } catch (e) {
-        this.log('charging cutoff SOC read failed:', e.message);
       }
       // Discharging cutoff SOC (register 44001, 0.1% resolution)
-      try {
-        const reg_discharging_cutoff = await this.modbus.readHoldingRegisters(slaveId, 44001, 1);
+      const reg_discharging_cutoff = await this._readStaticSafe(slaveId, 44001, 1, 'discharging cutoff SOC');
+      if (reg_discharging_cutoff) {
         const discharging_cutoff_soc = ModbusClient.bufferToUint16(Buffer.concat(reg_discharging_cutoff)) * 0.1;
         this._setSettingsSafe({ discharging_cutoff_soc });
-      } catch (e) {
-        this.log('discharging cutoff SOC read failed:', e.message);
       }
     } catch (error) {
       this.log('Device static info error:', error);
@@ -561,6 +581,9 @@ class VenusDDevice extends Homey.Device {
   // without retries on the cycle after a trip. Every skipped register is
   // recorded and reported by pollData so a thin poll is never silent.
   async _readSafe(slaveId, address, count, label) {
+    // Known not to exist on this firmware - never touch the wire again.
+    if (this._registerBlocked(address)) return null;
+
     if (this._pollBreakerTripped) {
       this._pollSkippedLabels.push(`${address}/${label}`);
       return null;
@@ -578,6 +601,13 @@ class VenusDDevice extends Homey.Device {
       return buf;
     } catch (err) {
       this._pollReadsFail++;
+      // A protocol exception means the device answered and refused: not a bus
+      // fault, so it must not feed the circuit breaker, and the register is
+      // retired instead of retried.
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, label, err);
+        return null;
+      }
       this._pollConsecutiveFails++;
       const msg = (err && err.message) ? err.message : String(err);
       this.log(`Register ${address} (${label}) read failed: ${msg}`);
@@ -586,6 +616,59 @@ class VenusDDevice extends Homey.Device {
         this.log(`[poll] Circuit breaker tripped: ${this._pollConsecutiveFails} consecutive read failures, last ${address} (${label}). Skipping the remaining registers this cycle to stop loading the bus; the next cycle probes with retries disabled.`);
       }
       return null;
+    }
+  }
+
+  // See the Venus E driver for the full rationale behind these three.
+  // Lazily initialised so a read can never depend on onInit having reached the
+  // field: a missing Set would make every _readSafe throw, and the process-block
+  // catch would swallow it into a silently empty poll cycle.
+  _registerBlocked(address) {
+    if (!this._unsupportedRegisters) {
+      this._unsupportedRegisters = new Set(this.getStoreValue('unsupported_registers') || []);
+    }
+    return this._unsupportedRegisters.has(address);
+  }
+
+  async _markRegisterUnsupported(address, label, error) {
+    if (this._registerBlocked(address)) return;
+    this._unsupportedRegisters.add(address);
+    const msg = (error && error.message) ? error.message : String(error);
+    this.log(`[registers] ${address} (${label}) is not supported by this device's firmware (${msg}). It will not be read or written again - anything that depends on it is unavailable on this device.`);
+    try {
+      await this.setStoreValue('unsupported_registers', [...this._unsupportedRegisters]);
+    } catch (err) {
+      this.log(`[registers] Could not persist the unsupported-register list: ${err.message}`);
+    }
+  }
+
+  async _readStaticSafe(slaveId, address, count, label) {
+    if (this._registerBlocked(address)) return null;
+    try {
+      return await this.modbus.readHoldingRegisters(slaveId, address, count);
+    } catch (err) {
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, label, err);
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  // Always throws on failure so a flow card fails visibly instead of silently
+  // pretending it set something.
+  async _writeSafe(slaveId, address, value, label) {
+    if (this._registerBlocked(address)) {
+      throw new Error(`${label} is not supported by this battery's firmware (register ${address}) - the setting cannot be changed from Homey`);
+    }
+    try {
+      await this.modbus.writeSingleRegister(slaveId, address, value);
+    } catch (err) {
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, label, err);
+        throw new Error(`${label} is not supported by this battery's firmware (register ${address}) - the setting cannot be changed from Homey`);
+      }
+      throw err;
     }
   }
 
@@ -1507,7 +1590,7 @@ class VenusDDevice extends Homey.Device {
       const slaveId = this.settings.slave_id || 1;
       const registerValue = Math.round(clampedPercentage * 10);
       await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
-      await this.modbus.writeSingleRegister(slaveId, 44000, registerValue);
+      await this._writeSafe(slaveId, 44000, registerValue, 'Charging cutoff SOC');
       this.log('Charging cutoff SOC written successfully');
     } catch (error) {
       this.error('Error writing charging cutoff SOC:', error);
@@ -1525,7 +1608,7 @@ class VenusDDevice extends Homey.Device {
       const slaveId = this.settings.slave_id || 1;
       const registerValue = Math.round(clampedPercentage * 10);
       await this.modbus.writeSingleRegister(slaveId, 42000, 21930);
-      await this.modbus.writeSingleRegister(slaveId, 44001, registerValue);
+      await this._writeSafe(slaveId, 44001, registerValue, 'Discharging cutoff SOC');
       this.log('Discharging cutoff SOC written successfully');
     } catch (error) {
       this.error('Error writing discharging cutoff SOC:', error);
@@ -1585,10 +1668,20 @@ class VenusDDevice extends Homey.Device {
   async conditionMaxDischargePowerLimitBelow(args) {
     return (this.getCapabilityValue('max_discharge_power_limit') || 0) < Number(args.power);
   }
+  // Throws rather than falling back to a default when the firmware does not
+  // have the register: the setting then reflects nothing on the device, so
+  // comparing against it would be silently wrong. A failing flow is visible.
   async conditionChargingCutoffSocAbove(args) {
+    if (this._registerBlocked(44000)) {
+      throw new Error("This battery's firmware does not support the charging cutoff SOC register - this condition cannot be evaluated");
+    }
     return (this.getSetting('charging_cutoff_soc') || 100) > Number(args.percentage);
   }
+  // See conditionChargingCutoffSocAbove for why this throws.
   async conditionDischargingCutoffSocAbove(args) {
+    if (this._registerBlocked(44001)) {
+      throw new Error("This battery's firmware does not support the discharging cutoff SOC register - this condition cannot be evaluated");
+    }
     return (this.getSetting('discharging_cutoff_soc') || 15) > Number(args.percentage);
   }
 
