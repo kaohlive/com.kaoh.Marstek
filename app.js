@@ -34,6 +34,45 @@ module.exports = class MyMarstekBatteryApp extends Homey.App {
   }
 
   /**
+   * Called when the app is stopped, updated or reinstalled.
+   *
+   * Device.onUninit already does this per device, but Homey does not guarantee
+   * it runs on every teardown path, and a missed close is expensive: a Venus V3
+   * serves one Modbus TCP client at a time and keeps a stale slot occupied
+   * until its firmware times it out, which testers experience as "no data for
+   * hours after an app update". Releasing here as well is belt and braces, and
+   * idempotent - the device guards against being released twice.
+   */
+  async onUninit() {
+    this.log('App shutting down - releasing Modbus connections');
+
+    const releases = [];
+    for (const id of ['venus', 'venusd']) {
+      let driver;
+      try {
+        driver = this.homey.drivers.getDriver(id);
+      } catch (err) {
+        continue;
+      }
+      if (!driver) continue;
+      for (const device of driver.getDevices()) {
+        if (typeof device.onUninit !== 'function') continue;
+        releases.push(Promise.resolve().then(() => device.onUninit()).catch(() => {}));
+      }
+    }
+
+    // Bounded for the same reason as in the device: the FIN leaves the moment
+    // close() is called, and Homey's shutdown window is short - blocking on it
+    // only risks being killed mid-shutdown.
+    await Promise.race([
+      Promise.all(releases),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
+    ]);
+
+    this.log(`Released ${releases.length} Modbus connection(s)`);
+  }
+
+  /**
    * Get all Marstek battery devices across all drivers (venus + venusd).
    * Used by the settings page to list available devices.
    */

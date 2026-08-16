@@ -341,6 +341,19 @@
             { "id": "always", "label": { "en": "Always show", "nl": "Altijd tonen" } },
             { "id": "never", "label": { "en": "Never show", "nl": "Nooit tonen" } }
           ]
+        },
+        {
+          "id": "retest_unsupported_registers",
+          "type": "checkbox",
+          "label": {
+            "en": "Re-test unsupported values",
+            "nl": "Niet-ondersteunde waarden opnieuw testen"
+          },
+          "hint": {
+            "en": "When this battery's firmware rejects a value, the app stops asking for it - a rejection takes the whole Modbus connection down, so retrying it would keep breaking the connection. Switch this on after a battery firmware update to test those values once more. It switches itself back off.",
+            "nl": "Als de firmware van deze batterij een waarde weigert, stopt de app met die op te vragen - een weigering legt de hele Modbus-verbinding plat, dus opnieuw proberen zou de verbinding blijven breken. Zet dit aan na een firmware-update van de batterij om die waarden nog een keer te testen. Hij schakelt zichzelf weer uit."
+          },
+          "value": false
         }
       ]
     },

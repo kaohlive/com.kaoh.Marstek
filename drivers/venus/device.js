@@ -51,6 +51,12 @@ class VenusBatteryDevice extends Homey.Device {
     // session down with it. Persisted, so a device only ever pays for the
     // discovery once. See _readSafe / _writeSafe / _markRegisterUnsupported.
     this._unsupportedRegisters = new Set(this.getStoreValue('unsupported_registers') || []);
+    // Set when a refused register poisoned the session; consumed by pollData.
+    this._pendingReconnect = false;
+    this._discoveryReconnects = 0;
+    // Hard stop so a pathological device can never turn discovery into a
+    // reconnect loop. Real devices need one per unsupported register.
+    this.MAX_DISCOVERY_RECONNECTS = 5;
     if (this._unsupportedRegisters.size > 0) {
       this.log(`Registers known to be unsupported by this device: ${[...this._unsupportedRegisters].join(', ')} - they will not be read or written`);
     }
@@ -163,6 +169,28 @@ class VenusBatteryDevice extends Homey.Device {
     if (changedKeys.includes('connection_timeout')) {
       const live = this.modbus.setConnectionTimeout(newSettings.connection_timeout);
       this.log(`Connection timeout updated to ${newSettings.connection_timeout}ms (${live ? 'applied to the current connection' : 'no client yet, applies on connect'})`);
+    }
+
+    // Explicit way back from the unsupported-register list. Without it a value
+    // retired on old firmware could never return, so a battery firmware update
+    // that fixes it would go unnoticed forever. Deliberately manual: probing on
+    // a timer would mean re-poisoning the session on a schedule, and this app
+    // has learned what periodic speculative traffic does to a Marstek.
+    if (changedKeys.includes('retest_unsupported_registers') && newSettings.retest_unsupported_registers) {
+      const forgotten = [...(this._unsupportedRegisters || [])];
+      this._unsupportedRegisters = new Set();
+      this._discoveryReconnects = 0;
+      this._firmwareRaw = undefined;
+      this.setStoreValue('unsupported_registers', []).catch(() => {});
+      this.setStoreValue('firmware_register_unsupported', false).catch(() => {});
+      this.log(`[registers] Re-test requested - forgetting ${forgotten.length} unsupported register(s)${forgotten.length ? ': ' + forgotten.join(', ') : ''}. They will be tried again on the next connection.`);
+      this._pendingReconnect = true;
+      // Cannot write our own settings from inside onSettings, so flip the
+      // checkbox back on the next tick.
+      setTimeout(() => {
+        this.setSettings({ retest_unsupported_registers: false })
+          .catch((err) => this.log('Could not reset the re-test switch:', err.message));
+      }, 1000);
     }
 
     // Apply max consecutive errors changes
@@ -704,6 +732,21 @@ async writeDeviceName(name, config) {
     this._pollSkippedTicks = 0;
 
     try {
+      // A refused register poisoned the current session. Replace it before
+      // polling: every read on a poisoned session is a timeout, so without this
+      // the remaining unsupported registers could only be discovered by the
+      // user restarting the app once per register.
+      if (this._pendingReconnect) {
+        this._pendingReconnect = false;
+        if (this._discoveryReconnects < this.MAX_DISCOVERY_RECONNECTS) {
+          this._discoveryReconnects++;
+          this.log(`[registers] Replacing the Modbus connection after a refused register (${this._discoveryReconnects}/${this.MAX_DISCOVERY_RECONNECTS}) so the next one can be found without a restart`);
+          await this.disconnectModbus();
+        } else {
+          this.log(`[registers] Not replacing the connection again - already did so ${this._discoveryReconnects} times this app start, which should never happen. Restart the app if this device still has no data.`);
+        }
+      }
+
       if (!await this.connectModbus()) {
         this.consecutiveErrors++;
         this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
@@ -877,6 +920,15 @@ async writeDeviceName(name, config) {
     this._unsupportedRegisters.add(address);
     const msg = (error && error.message) ? error.message : String(error);
     this.log(`[registers] ${address} (${label}) is not supported by this device's firmware (${msg}). It will not be read or written again - anything that depends on it is unavailable on this device.`);
+    // A refusal takes the Modbus session down with it, and on a dead session
+    // every later read is a timeout - which is indistinguishable from "this
+    // register does not exist either". So we can only ever discover ONE bad
+    // register per session. Ask the poll loop for a fresh connection so the
+    // next one can be found in this same app start instead of costing the user
+    // another manual restart. Only for refusals: a timeout does not poison.
+    if (ModbusClient.isProtocolException(error)) {
+      this._pendingReconnect = true;
+    }
     try {
       await this.setStoreValue('unsupported_registers', [...this._unsupportedRegisters]);
     } catch (err) {

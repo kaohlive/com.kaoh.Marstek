@@ -145,6 +145,23 @@ class ModbusClient extends EventEmitter {
       return true;
     } catch (error) {
       this.connected = false;
+      // Drop the client whose connect failed. It never became usable, and
+      // modbus-serial does not call the close callback of a client that never
+      // opened - so keeping the reference makes the NEXT connect() spend the
+      // full _closeClient timeout burying a corpse before it can even try. On
+      // a refused port that was 5 seconds of dead wait per attempt, per device.
+      // No connection handlers were attached yet, so destroying the socket here
+      // cannot trigger a reconnect.
+      const failed = this.client;
+      this.client = null;
+      if (failed) {
+        try {
+          const socket = failed._port && failed._port._client;
+          if (socket && !socket.destroyed) socket.destroy();
+        } catch (e) {
+          // Nothing left to clean up.
+        }
+      }
       this.emit('error', error);
       return false;
     }
