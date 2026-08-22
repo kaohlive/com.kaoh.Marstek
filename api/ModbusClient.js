@@ -12,10 +12,17 @@ class ModbusClient extends EventEmitter {
     this.reconnectInterval = null;
     this.config = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10;
+    // 30, matching what the 1.3.22 rollback and the 1.4.0 changelog have both
+    // promised users since June. The v1.4.0 rebuild from the 1.3.4 baseline
+    // silently carried the old 10 forward. At a 60s cap this is ~27 minutes of
+    // trying before a truly dead device is given up on.
+    this.maxReconnectAttempts = 30;
     this.reconnectDelay = 5000; // Start with 5 seconds
     this.maxReconnectDelay = 60000; // Max 60 seconds
     this.isReconnecting = false;
+    // Why the most recent connect() failed, so callers can back off on an
+    // unambiguous refusal instead of retrying at poll cadence.
+    this.lastConnectError = null;
     // Used by _classifyError to differentiate "slave never answered" from
     // "slave answered before and has now stopped" - the former is almost
     // always a misconfigured slave_id, the latter is the device going away.
@@ -136,6 +143,7 @@ class ModbusClient extends EventEmitter {
       });
 
       this.connected = true;
+      this.lastConnectError = null;
       this.reconnectAttempts = 0;
       this.isReconnecting = false;
 
@@ -145,6 +153,7 @@ class ModbusClient extends EventEmitter {
       return true;
     } catch (error) {
       this.connected = false;
+      this.lastConnectError = error;
       // Drop the client whose connect failed. It never became usable, and
       // modbus-serial does not call the close callback of a client that never
       // opened - so keeping the reference makes the NEXT connect() spend the

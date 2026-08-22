@@ -79,6 +79,23 @@ class VenusDDevice extends Homey.Device {
     // dead and the remaining reads are skipped.
     this.POLL_BREAKER_THRESHOLD = 3;
 
+    // Half-open socket recovery, connect backoff and the composed warning slot.
+    // See the Venus E driver for the full rationale behind each.
+    this._emptyCycles = 0;
+    this._emptyCyclesBeforeReconnect = 5;
+    this._recoveryReconnects = 0;
+    this._pendingRecoveryReconnect = false;
+    this._lastSuccessfulReadAt = 0;
+    this.EMPTY_CYCLES_BASE = 5;
+    this.EMPTY_CYCLES_MAX = 60;
+    this._connectFailures = 0;
+    this._connectBackoffUntil = 0;
+    this.MAX_CONNECT_BACKOFF = 300000;
+    this._warningSources = { connectivity: null, alarm: null, config: null };
+    this._currentWarningText = null;
+    this.SUSTAINED_FAILURE_MS = 300000;
+    this._cyclesOverrunningInterval = 0;
+
     // Registers this firmware answered with a protocol exception. Marstek
     // firmware stops responding on a TCP session after refusing a register, so
     // they are retired rather than retried. Persisted per device.
@@ -267,8 +284,19 @@ class VenusDDevice extends Homey.Device {
     if (!await this.connectModbus()) {
       throw new Error('Modbus connection failed');
     }
+    if (this._registerBlocked(address)) {
+      throw new Error(`Register ${address} is not supported by this device's firmware and is no longer read. Use "Re-test unsupported values" in the device settings to try it again.`);
+    }
     const slaveId = this.settings.slave_id || 1;
-    const result = await this.modbus.readHoldingRegisters(slaveId, address, count);
+    let result;
+    try {
+      result = await this.modbus.readHoldingRegisters(slaveId, address, count);
+    } catch (err) {
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, 'manual read', err);
+      }
+      throw err;
+    }
     const buffer = Buffer.concat(result);
     const response = {
       success: true,
@@ -435,6 +463,20 @@ class VenusDDevice extends Homey.Device {
       }
       const deviceName = ModbusClient.bufferToString(reg_name);
 
+      // Mirror of the guard the Venus E driver has had since 1.5.0. Without it
+      // a Venus E paired on this driver is accepted silently: the register maps
+      // overlap enough since the 1.5.4 rewire that it half-works, with the
+      // wrong family's scaling. Only reject on names that are clearly a Venus E
+      // - an unknown name might be a Venus D variant we have not seen.
+      const nameLower = deviceName.toLowerCase().trim();
+      if (nameLower.startsWith('vnse') || nameLower.startsWith('ac')
+          || nameLower.includes('limited') || nameLower.includes('bi_')) {
+        this.log(`Detected a Venus E ("${deviceName}") on the Venus D driver - this driver does not support that hardware.`);
+        this.setWarning('This is a Marstek Venus E, not a Venus D. Please remove this device and re-add it using the "Venus E" driver.').catch((err) => this.log('setWarning failed:', err.message));
+        this._setUnavailableSafe('Wrong driver - see warning above');
+        return;
+      }
+
       // 31101 firmware register deliberately not read on Venus D - see
       // top-of-file comment. Firmware in settings stays "unknown" until
       // we find a register that works reliably across firmware versions.
@@ -527,14 +569,41 @@ class VenusDDevice extends Homey.Device {
         }
       }
 
+      if (this._pendingRecoveryReconnect) {
+        this._pendingRecoveryReconnect = false;
+        this._recoveryReconnects++;
+        const silentFor = this._lastSuccessfulReadAt
+          ? `${Math.round((Date.now() - this._lastSuccessfulReadAt) / 1000)}s`
+          : 'the whole session';
+        this.log(`[poll] No successful read for ${silentFor} over ${this._emptyCyclesBeforeReconnect} consecutive empty cycles - replacing the connection (recovery #${this._recoveryReconnects})`);
+        this._emptyCyclesBeforeReconnect = Math.min(this._emptyCyclesBeforeReconnect * 2, this.EMPTY_CYCLES_MAX);
+        await this.disconnectModbus();
+      }
+
+      if (Date.now() < this._connectBackoffUntil) {
+        return;
+      }
+
       if (!await this.connectModbus()) {
         this.consecutiveErrors++;
-        this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+        const err = this.modbus.lastConnectError;
+        const reason = (err && err.message) ? err.message : 'unknown';
+        this._connectFailures++;
+        const delay = Math.min(
+          (this.settings.poll_interval || 5000) * Math.pow(2, this._connectFailures - 1),
+          this.MAX_CONNECT_BACKOFF,
+        );
+        this._connectBackoffUntil = Date.now() + delay;
+        this.log(`Connection failed (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${reason}. Next attempt in ${Math.round(delay / 1000)}s.`);
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
           this._setConnectivityAlarm(true);
+          this._setWarningSource('connectivity',
+            `Cannot reach this battery: ${reason}. Check that it is powered on, reachable at ${this.settings.ip}, and that Modbus TCP is still enabled in the Marstek app.`);
         }
         return;
       }
+      this._connectFailures = 0;
+      this._connectBackoffUntil = 0;
 
       const slaveId = this.settings.slave_id || 1;
       // Per-cycle read counters and circuit-breaker state used by _readSafe.
@@ -568,11 +637,26 @@ class VenusDDevice extends Homey.Device {
           this.log(`Partial poll: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed`);
         }
         this.consecutiveErrors = 0;
+        this._lastSuccessfulReadAt = Date.now();
+        this._emptyCycles = 0;
+        this._emptyCyclesBeforeReconnect = this.EMPTY_CYCLES_BASE;
+        this._recoveryReconnects = 0;
         this._setConnectivityAlarm(false);
+        this._setWarningSource('connectivity', null);
         if (!this._isDeleted && !this.getAvailable()) {
           this._setAvailableSafe();
         }
       } else {
+        this._emptyCycles++;
+        if (this._emptyCycles >= this._emptyCyclesBeforeReconnect) {
+          this._emptyCycles = 0;
+          this._pendingRecoveryReconnect = true;
+        }
+        const silentMs = this._lastSuccessfulReadAt ? Date.now() - this._lastSuccessfulReadAt : 0;
+        if (silentMs >= this.SUSTAINED_FAILURE_MS) {
+          this._setWarningSource('connectivity',
+            `No data from this battery for ${Math.round(silentMs / 60000)} minutes. The network connection is open but the battery is not answering. Please send a diagnostic report from the app settings before restarting anything.`);
+        }
         this.consecutiveErrors++;
         this.log(`Poll produced no data (${this._pollReadsFail} reads failed) (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
@@ -632,9 +716,8 @@ class VenusDDevice extends Homey.Device {
       return null;
     }
     try {
-      const buf = await this.modbus.readHoldingRegisters(
-        slaveId, address, count, this._probeMode ? 0 : 2,
-      );
+      const retries = (this._probeMode || this._pollConsecutiveFails > 0) ? 0 : 2;
+      const buf = await this.modbus.readHoldingRegisters(slaveId, address, count, retries);
       this._pollReadsOk++;
       this._pollConsecutiveFails = 0;
       if (this._probeMode) {
@@ -660,6 +743,27 @@ class VenusDDevice extends Homey.Device {
       }
       return null;
     }
+  }
+
+  // Homey exposes one warning per device; connectivity, alarms and config
+  // advice all want it, so they are composed by priority instead of clobbering
+  // each other. See the Venus E driver.
+  _setWarningSource(source, text) {
+    if (!(source in this._warningSources)) return;
+    this._warningSources[source] = text || null;
+    this._refreshWarning();
+  }
+
+  _refreshWarning() {
+    if (this._isDeleted) return;
+    const text = this._warningSources.connectivity
+      || this._warningSources.alarm
+      || this._warningSources.config
+      || null;
+    if (text === this._currentWarningText) return;
+    this._currentWarningText = text;
+    const done = text ? this.setWarning(text) : this.unsetWarning();
+    Promise.resolve(done).catch((err) => this.log('Updating the device warning failed:', err.message));
   }
 
   // See the Venus E driver for the full rationale behind these three.
@@ -979,7 +1083,7 @@ class VenusDDevice extends Homey.Device {
         const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
         const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault}`;
 
-        this.setWarning(alarmMessage);
+        this._setWarningSource('alarm', alarmMessage);
 
         this.homey.flow.getDeviceTriggerCard('venusd_battery_fault_detected')
           .trigger(this, { message: alarmMessage, alarm_codes: alarmCodes }, {})
@@ -1001,7 +1105,7 @@ class VenusDDevice extends Homey.Device {
             .catch(this.error);
         }
       } else {
-        this.unsetWarning();
+        this._setWarningSource('alarm', null);
       }
     } catch (error) {
       this.log('Error processing alarm codes:', error);

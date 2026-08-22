@@ -45,6 +45,40 @@ class VenusBatteryDevice extends Homey.Device {
     // dead and the remaining reads are skipped.
     this.POLL_BREAKER_THRESHOLD = 3;
 
+    // Half-open socket recovery. A battery that reboots without sending FIN or
+    // RST leaves our side of the TCP connection ESTABLISHED forever: every read
+    // times out, and no socket event ever fires to trigger a reconnect. TCP
+    // cannot detect that on its own - the application has to. Counted in fully
+    // empty poll cycles, never in individual timeouts: a healthy connection
+    // with the occasional hiccup never produces a cycle with zero successful
+    // reads, let alone several in a row. That is the distinction the v1.3.19
+    // force-reconnect got wrong.
+    this._emptyCycles = 0;
+    this._emptyCyclesBeforeReconnect = 5;
+    this._recoveryReconnects = 0;
+    this._pendingRecoveryReconnect = false;
+    this._lastSuccessfulReadAt = 0;
+    // Streak needed before each further attempt, so a device that is genuinely
+    // gone backs off instead of cycling its socket every five polls forever.
+    this.EMPTY_CYCLES_BASE = 5;
+    this.EMPTY_CYCLES_MAX = 60;
+
+    // Connect backoff. A refused port retried at poll cadence is a connect
+    // storm - one tester produced 545 attempts at 1/s. Unlike a read timeout
+    // this signal is unambiguous: nothing is listening, so backing off cannot
+    // make a working setup stale.
+    this._connectFailures = 0;
+    this._connectBackoffUntil = 0;
+    this.MAX_CONNECT_BACKOFF = 300000;
+
+    // Homey gives a device ONE warning slot, and the alarm code already writes
+    // to it. Composed here by priority so the two cannot wipe each other.
+    this._warningSources = { connectivity: null, alarm: null, config: null };
+    this._currentWarningText = null;
+    // How long without a single successful read before the user is told.
+    this.SUSTAINED_FAILURE_MS = 300000;
+    this._cyclesOverrunningInterval = 0;
+
     // Registers this firmware answered with a protocol exception. Marstek
     // firmware stops responding on a TCP session after refusing a register, so
     // asking again does not just waste a round trip - it takes the whole
@@ -358,11 +392,25 @@ async writeDeviceName(name, config) {
   // page while the poll was active.
 
   async apiReadRegister(address, count = 1) {
+    // Same protection the state dump got in 1.5.18. This is the button support
+    // asks people to press when probing an unknown address, and an unprotected
+    // probe of a register the firmware refuses takes the Modbus session down.
+    if (this._registerBlocked(address)) {
+      throw new Error(`Register ${address} is not supported by this device's firmware and is no longer read. Use "Re-test unsupported values" in the device settings to try it again.`);
+    }
     if (!await this.connectModbus()) {
       throw new Error('Modbus connection failed');
     }
     const slaveId = this.settings.slave_id || 1;
-    const result = await this.modbus.readHoldingRegisters(slaveId, address, count);
+    let result;
+    try {
+      result = await this.modbus.readHoldingRegisters(slaveId, address, count);
+    } catch (err) {
+      if (ModbusClient.isProtocolException(err)) {
+        await this._markRegisterUnsupported(address, 'manual read', err);
+      }
+      throw err;
+    }
     const buffer = Buffer.concat(result);
     const response = {
       success: true,
@@ -588,12 +636,15 @@ async writeDeviceName(name, config) {
       } else if (deviceNameLower.startsWith('vn')) {
         this.deviceVersion = 'v3';
       } else {
-        // Fallback to firmware version detection if device name is unclear.
-        // This is the only case where the firmware register is needed rather
-        // than merely nice to display, so it is worth one guarded attempt.
-        const fallbackRaw = await this._readFirmwareOnce(slaveId);
-        this.deviceVersion = (fallbackRaw === null ? 999 : fallbackRaw) >= 300 ? 'v3' : 'v1v2';
-        this.log(`Using firmware fallback for version detection - unknown device name: ${deviceName}`);
+        // No firmware fallback any more. It used to read `firmware >= 300` as
+        // v3, on a scale that does not exist: real units report 147-153, and
+        // field measurements show the version register is refused outright on
+        // V3 hardware. The rule would have classified a V3 as v1v2 and applied
+        // current scaling that is a factor of ten out. An unrecognised name is
+        // far more likely to be newer hardware than a V1, so default to v3 and
+        // say so loudly instead of guessing from a number we cannot trust.
+        this.deviceVersion = 'v3';
+        this.log(`Unknown device name "${deviceName}" - assuming v3 scaling. If current or voltage readings look a factor of ten out, please report this device name.`);
       }
 
       this.log(`Detected device version: ${this.deviceVersion} (device: "${deviceName}")`);
@@ -672,24 +723,43 @@ async writeDeviceName(name, config) {
     if (this._firmwareRaw !== undefined) return this._firmwareRaw;
 
     // The 1.5.13 flag predates the generic unsupported-register list; honour it
-    // so devices that already discovered this do not probe again.
-    if (this.getStoreValue('firmware_register_unsupported')
-        || this._registerBlocked(31101)) {
-      this._firmwareRaw = null;
-      return null;
+    // so devices that already discovered 31101 is refused do not probe it again.
+    // It must not skip the whole helper though - 30200 has never been tried on
+    // those devices.
+    if (this.getStoreValue('firmware_register_unsupported')) {
+      this._unsupportedRegisters = this._unsupportedRegisters || new Set();
+      this._unsupportedRegisters.add(31101);
     }
 
-    try {
-      const reg = await this.modbus.readHoldingRegisters(slaveId, 31101, 1, 0);
-      this._firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg));
-      return this._firmwareRaw;
-    } catch (error) {
-      this._firmwareRaw = null;
-      await this._markRegisterUnsupported(31101, 'firmware version', error);
-      this.setStoreValue('firmware_register_unsupported', true).catch(() => {});
-      this.log('The Firmware setting stays "xxx" on this device; that is cosmetic and does not affect operation.');
-      return null;
+    // Two candidates, tried in order. 31101 is where V1/V2 keep it; V3 units
+    // refuse it outright and some answer on 30200 instead. Both are display
+    // only - nothing branches on the value, because field measurements show the
+    // numbers are not comparable between models and one V3 on firmware 148
+    // refuses both. Whichever answers, we show it; if neither does, the
+    // Firmware setting stays "xxx", which is cosmetic.
+    //
+    // A refusal poisons the session, so the second candidate will usually time
+    // out on this pass. That is fine: the refused register is retired and the
+    // discovery reconnect gives us a fresh session, on which the next attempt
+    // skips straight to the candidate that has not been retired yet.
+    for (const [address, label] of [[31101, 'firmware version'], [30200, 'firmware version (EMS)']]) {
+      if (this._registerBlocked(address)) continue;
+      try {
+        const reg = await this.modbus.readHoldingRegisters(slaveId, address, 1, 0);
+        this._firmwareRaw = ModbusClient.bufferToUint16(Buffer.concat(reg));
+        this.log(`Firmware version read from register ${address}: ${this._firmwareRaw}`);
+        return this._firmwareRaw;
+      } catch (error) {
+        await this._markRegisterUnsupported(address, label, error);
+        if (address === 31101) {
+          this.setStoreValue('firmware_register_unsupported', true).catch(() => {});
+        }
+      }
     }
+
+    this._firmwareRaw = null;
+    this.log('No firmware register on this device answered - the Firmware setting stays "xxx". Cosmetic; it does not affect operation.');
+    return null;
   }
 
   async pollData() {
@@ -747,15 +817,46 @@ async writeDeviceName(name, config) {
         }
       }
 
+      // Recovery reconnect: the connection has produced nothing for several
+      // whole cycles, which on this hardware means a half-open socket after the
+      // battery rebooted. Replace it - TCP will never tell us it is dead.
+      if (this._pendingRecoveryReconnect) {
+        this._pendingRecoveryReconnect = false;
+        this._recoveryReconnects++;
+        const silentFor = this._lastSuccessfulReadAt
+          ? `${Math.round((Date.now() - this._lastSuccessfulReadAt) / 1000)}s`
+          : 'the whole session';
+        this.log(`[poll] No successful read for ${silentFor} over ${this._emptyCyclesBeforeReconnect} consecutive empty cycles - replacing the connection (recovery #${this._recoveryReconnects}). Next attempt needs ${Math.min(this._emptyCyclesBeforeReconnect * 2, this.EMPTY_CYCLES_MAX)} empty cycles.`);
+        this._emptyCyclesBeforeReconnect = Math.min(this._emptyCyclesBeforeReconnect * 2, this.EMPTY_CYCLES_MAX);
+        await this.disconnectModbus();
+      }
+
+      // A refused port must not be retried at poll cadence.
+      if (Date.now() < this._connectBackoffUntil) {
+        return;
+      }
+
       if (!await this.connectModbus()) {
         this.consecutiveErrors++;
-        this.log(`Connection failed (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+        const err = this.modbus.lastConnectError;
+        const reason = (err && err.message) ? err.message : 'unknown';
+        this._connectFailures++;
+        const delay = Math.min(
+          (this.settings.poll_interval || 5000) * Math.pow(2, this._connectFailures - 1),
+          this.MAX_CONNECT_BACKOFF,
+        );
+        this._connectBackoffUntil = Date.now() + delay;
+        this.log(`Connection failed (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${reason}. Next attempt in ${Math.round(delay / 1000)}s.`);
 
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
           this._setConnectivityAlarm(true);
+          this._setWarningSource('connectivity',
+            `Cannot reach this battery: ${reason}. Check that the battery is powered on, reachable at ${this.settings.ip}, and that Modbus TCP is still enabled in the Marstek app.`);
         }
         return;
       }
+      this._connectFailures = 0;
+      this._connectBackoffUntil = 0;
 
       const slaveId = this.settings.slave_id || 1;
       // Per-cycle read counters and circuit-breaker state used by _readSafe.
@@ -778,6 +879,23 @@ async writeDeviceName(name, config) {
       console.log('Get system data [slave '+slaveId+']')
       await this.processSystemData(slaveId);
 
+      // A cycle that consistently outruns the poll interval means the interval
+      // is set shorter than this setup can service. The tick-skip lines already
+      // say so, but nobody reads logs - so after a sustained streak say it
+      // where the user will see it.
+      if (this._pollSkippedTicks > 0) {
+        this._cyclesOverrunningInterval++;
+        if (this._cyclesOverrunningInterval === 20) {
+          const interval = this.settings.poll_interval || 5000;
+          this.log(`[poll] 20 cycles in a row took longer than the ${interval}ms poll interval - the interval is shorter than this setup can service`);
+          this._setWarningSource('config',
+            `The poll interval (${interval / 1000}s) is shorter than a full read of this battery takes, so polls are permanently queued. Increasing it in the advanced settings will make readings more reliable, not less.`);
+        }
+      } else if (this._cyclesOverrunningInterval > 0) {
+        this._cyclesOverrunningInterval = 0;
+        this._setWarningSource('config', null);
+      }
+
       // Account for everything the breaker skipped, so a thin poll is never
       // mistaken for "these registers do not exist on this firmware". Arm
       // probe mode so the next cycle re-tests the bus without retries.
@@ -794,11 +912,28 @@ async writeDeviceName(name, config) {
           this.log(`Partial poll: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed`);
         }
         this.consecutiveErrors = 0;
+        // Any data at all means the socket is genuinely alive, so the half-open
+        // machinery resets completely - including the escalating streak.
+        this._lastSuccessfulReadAt = Date.now();
+        this._emptyCycles = 0;
+        this._emptyCyclesBeforeReconnect = this.EMPTY_CYCLES_BASE;
+        this._recoveryReconnects = 0;
         this._setConnectivityAlarm(false);
+        this._setWarningSource('connectivity', null);
         if (!this._isDeleted && !this.getAvailable()) {
           this._setAvailableSafe();
         }
       } else {
+        this._emptyCycles++;
+        if (this._emptyCycles >= this._emptyCyclesBeforeReconnect) {
+          this._emptyCycles = 0;
+          this._pendingRecoveryReconnect = true;
+        }
+        const silentMs = this._lastSuccessfulReadAt ? Date.now() - this._lastSuccessfulReadAt : 0;
+        if (silentMs >= this.SUSTAINED_FAILURE_MS) {
+          this._setWarningSource('connectivity',
+            `No data from this battery for ${Math.round(silentMs / 60000)} minutes. The network connection is open but the battery is not answering. Please send a diagnostic report from the app settings before restarting anything - that is what lets this be fixed.`);
+        }
         this.consecutiveErrors++;
         this.log(`Poll produced no data (${this._pollReadsFail} reads failed) (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
@@ -824,6 +959,29 @@ async writeDeviceName(name, config) {
         this.log(`[poll] Abandoned cycle ${generation} finished late after ${Date.now() - this._pollStartedAt}ms; current cycle ${this._pollGeneration} keeps running.`);
       }
     }
+  }
+
+  // Homey exposes a single warning per device. Three things want to use it, so
+  // they are composed here by priority rather than each calling setWarning and
+  // clobbering the others. Connectivity wins: if we cannot talk to the battery
+  // then whatever the alarm registers last said is stale anyway. Config advice
+  // is lowest - useful, never urgent.
+  _setWarningSource(source, text) {
+    if (!(source in this._warningSources)) return;
+    this._warningSources[source] = text || null;
+    this._refreshWarning();
+  }
+
+  _refreshWarning() {
+    if (this._isDeleted) return;
+    const text = this._warningSources.connectivity
+      || this._warningSources.alarm
+      || this._warningSources.config
+      || null;
+    if (text === this._currentWarningText) return;
+    this._currentWarningText = text;
+    const done = text ? this.setWarning(text) : this.unsetWarning();
+    Promise.resolve(done).catch((err) => this.log('Updating the device warning failed:', err.message));
   }
 
   // Reflect current reachability into the alarm_connectivity capability.
@@ -870,9 +1028,11 @@ async writeDeviceName(name, config) {
       return null;
     }
     try {
-      const buf = await this.modbus.readHoldingRegisters(
-        slaveId, address, count, this._probeMode ? 0 : 2,
-      );
+      // Retries are for a bus that is merely busy. Once a read in this cycle has
+      // already failed, three attempts per register only multiplies the wait -
+      // one tester dropped his timeout to 1000ms purely to escape it.
+      const retries = (this._probeMode || this._pollConsecutiveFails > 0) ? 0 : 2;
+      const buf = await this.modbus.readHoldingRegisters(slaveId, address, count, retries);
       this._pollReadsOk++;
       this._pollConsecutiveFails = 0;
       if (this._probeMode) {
@@ -1475,7 +1635,7 @@ async writeDeviceName(name, config) {
         const alarmMessage = `Device alarms detected: ${alarms.join(', ')}`;
         const alarmCodes = `System:${alarm_code},Grid:${grid_fault},Battery:${battery_fault}`;
 
-        this.setWarning(alarmMessage);
+        this._setWarningSource('alarm', alarmMessage);
 
         this.homey.flow.getDeviceTriggerCard('battery_fault_detected')
           .trigger(this,
@@ -1512,7 +1672,7 @@ async writeDeviceName(name, config) {
         // Clear stale warning: either policy suppresses (never) or the
         // battery is currently fault-free. Also flushes leftover warnings
         // from prior versions that fired unconditionally on 36103.
-        this.unsetWarning();
+        this._setWarningSource('alarm', null);
       }
 
     } catch (error) {

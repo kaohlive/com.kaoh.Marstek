@@ -1,4 +1,7 @@
 {
+  "1.5.20": {
+    "en": "Batteries that stop responding now recover on their own within a minute or two, instead of staying silent until the app is restarted. A battery that has been unreachable for several minutes says so on its tile instead of showing old values. A battery that refuses connections is retried at a sensible pace instead of on every poll."
+  },
   "1.5.19": {
     "en": "A battery that rejects a value now recovers within one app start instead of needing several restarts, because the app refreshes the connection itself after each rejection. A new 'Re-test unsupported values' switch in the device settings lets you try those values again after a battery firmware update. Also fixes a failed connection attempt costing five wasted seconds on every following attempt."
   },
