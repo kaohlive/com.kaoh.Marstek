@@ -90,7 +90,9 @@ class VenusDDevice extends Homey.Device {
     this.EMPTY_CYCLES_MAX = 60;
     this._connectFailures = 0;
     this._connectBackoffUntil = 0;
-    this.MAX_CONNECT_BACKOFF = 300000;
+    // 30s, not 300s - see the Venus E driver. A connect to a host that is
+    // off the network fails immediately and loads nothing.
+    this.MAX_CONNECT_BACKOFF = 30000;
     this._warningSources = { connectivity: null, alarm: null, config: null };
     this._currentWarningText = null;
     this.SUSTAINED_FAILURE_MS = 300000;
@@ -108,6 +110,7 @@ class VenusDDevice extends Homey.Device {
     // an EMS. Repetition is the signal there, not duration.
     this.REPEATED_OUTAGE_THRESHOLD = 3;
     this.BACKOFF_LOG_INTERVAL_MS = 60000;
+    this._lastConnectLogAt = 0;
     this._cyclesOverrunningInterval = 0;
 
     // Registers this firmware answered with a protocol exception. Marstek
@@ -608,16 +611,28 @@ class VenusDDevice extends Homey.Device {
           this.MAX_CONNECT_BACKOFF,
         );
         this._connectBackoffUntil = Date.now() + delay;
-        this.log(`Connection failed (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${reason}. Next attempt in ${Math.round(delay / 1000)}s.`);
+
+        // An outage that starts at the connection, not at the reads.
+        this._noteOutageStarted(reason);
+
+        // Rate-limited: the attempts are cheap, but one line each would flood
+        // the very report this line exists to fill.
+        if (Date.now() - this._lastConnectLogAt >= this.BACKOFF_LOG_INTERVAL_MS) {
+          this._lastConnectLogAt = Date.now();
+          this.log(`Connection failed (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${reason}. Next attempt in ${Math.round(delay / 1000)}s.`);
+        }
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
           this._setConnectivityAlarm(true);
           this._setWarningSource('connectivity',
-            `Cannot reach this battery: ${reason}. Check that it is powered on, reachable at ${this.settings.ip}, and that Modbus TCP is still enabled in the Marstek app.`);
+            this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD
+              ? `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It comes back on its own, but readings and commands are missed each time. Last error: ${reason}.`
+              : `Cannot reach this battery: ${reason}. Check that it is powered on and reachable at ${this.settings.ip}, and that Modbus TCP is still enabled in the Marstek app.`);
         }
         return;
       }
       this._connectFailures = 0;
       this._connectBackoffUntil = 0;
+      this._lastConnectLogAt = 0;
 
       const slaveId = this.settings.slave_id || 1;
       // Per-cycle read counters and circuit-breaker state used by _readSafe.
@@ -677,20 +692,7 @@ class VenusDDevice extends Homey.Device {
           this._emptyCycles = 0;
           this._pendingRecoveryReconnect = true;
         }
-        // Mark the start of an outage once, and record the mode it died in.
-        if (!this._outageStartedAt) {
-          this._outageStartedAt = Date.now();
-          this._outageTimestamps.push(this._outageStartedAt);
-          this._outageTimestamps = this._outageTimestamps
-            .filter((t) => this._outageStartedAt - t < this.OUTAGE_WINDOW_MS);
-          this.log(`[poll] Stopped receiving data. Last known mode: ${this._lastKnownMode || 'unknown'}. Outage ${this._outageTimestamps.length} in the last hour.`);
-        }
-        // Frequent short dropouts never reach SUSTAINED_FAILURE_MS but cost a
-        // command every time, so repetition gets its own message.
-        if (this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD) {
-          this._setWarningSource('connectivity',
-            `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It recovers on its own, but readings and commands are missed each time. A diagnostic report while this is happening would help find the cause.`);
-        }
+        this._noteOutageStarted(null);
         const silentMs = this._lastSuccessfulReadAt ? Date.now() - this._lastSuccessfulReadAt : 0;
         if (silentMs >= this.SUSTAINED_FAILURE_MS) {
           this._setWarningSource('connectivity',
@@ -781,6 +783,26 @@ class VenusDDevice extends Homey.Device {
         this.log(`[poll] Circuit breaker tripped: ${this._pollConsecutiveFails} consecutive read failures, last ${address} (${label}). Skipping the remaining registers this cycle to stop loading the bus; the next cycle probes with retries disabled.`);
       }
       return null;
+    }
+  }
+
+  // Records the start of an outage whichever layer it began at - a battery that
+  // drops off the network never reaches the read path. See the Venus E driver.
+  _noteOutageStarted(reason) {
+    if (this._outageStartedAt) return;
+    this._outageStartedAt = Date.now();
+    this._outageTimestamps.push(this._outageStartedAt);
+    this._outageTimestamps = this._outageTimestamps
+      .filter((t) => this._outageStartedAt - t < this.OUTAGE_WINDOW_MS);
+    this.log(`[poll] Stopped receiving data${reason ? ` (${reason})` : ''}. Last known mode: ${this._lastKnownMode || 'unknown'}. Outage ${this._outageTimestamps.length} in the last hour.`);
+
+    // Deliberately not gated on consecutiveErrors. Each of these outages is
+    // short enough to reset that counter when the battery comes back, so
+    // gating on it would mean the message for repeated dropouts could never
+    // appear for the pattern it exists to describe.
+    if (this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD) {
+      this._setWarningSource('connectivity',
+        `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It comes back on its own, but readings and commands are missed each time. A diagnostic report while this is happening would help find the cause.`);
     }
   }
 

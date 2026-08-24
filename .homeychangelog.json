@@ -1,4 +1,7 @@
 {
+  "1.5.22": {
+    "en": "A battery that disappears from the network is now noticed and reported the same way as one that stops answering, and is picked up again within half a minute of coming back instead of up to five. A battery that keeps dropping out briefly says so on its tile, even when each individual dropout is too short to look like a problem."
+  },
   "1.5.21": {
     "en": "Adds detail to the app log so the cause of these dropouts can finally be traced: when a battery goes quiet the log now records how long it was silent, what the battery was doing at that moment, and how often it has happened in the last hour. A battery that drops out repeatedly now says so on its tile, even when each individual dropout is short."
   },

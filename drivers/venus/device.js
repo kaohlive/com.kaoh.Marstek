@@ -69,7 +69,12 @@ class VenusBatteryDevice extends Homey.Device {
     // make a working setup stale.
     this._connectFailures = 0;
     this._connectBackoffUntil = 0;
-    this.MAX_CONNECT_BACKOFF = 300000;
+    // 30s, not 300s. A connect to a host that is off the network fails
+    // immediately and puts no load on the battery, which never sees a valid
+    // connection at all. The long cap was tuned for a refused port; for a device
+    // that leaves and rejoins within a couple of minutes it only added downtime
+    // of our own making. Log noise is solved by rate-limiting the message.
+    this.MAX_CONNECT_BACKOFF = 30000;
 
     // Homey gives a device ONE warning slot, and the alarm code already writes
     // to it. Composed here by priority so the two cannot wipe each other.
@@ -91,6 +96,7 @@ class VenusBatteryDevice extends Homey.Device {
     // an EMS. Repetition is the signal there, not duration.
     this.REPEATED_OUTAGE_THRESHOLD = 3;
     this.BACKOFF_LOG_INTERVAL_MS = 60000;
+    this._lastConnectLogAt = 0;
     this._cyclesOverrunningInterval = 0;
 
     // Registers this firmware answered with a protocol exception. Marstek
@@ -870,17 +876,29 @@ async writeDeviceName(name, config) {
           this.MAX_CONNECT_BACKOFF,
         );
         this._connectBackoffUntil = Date.now() + delay;
-        this.log(`Connection failed (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${reason}. Next attempt in ${Math.round(delay / 1000)}s.`);
+
+        // An outage that starts at the connection, not at the reads.
+        this._noteOutageStarted(reason);
+
+        // Rate-limited: the attempts are cheap, but one line each would flood
+        // the very report this line exists to fill.
+        if (Date.now() - this._lastConnectLogAt >= this.BACKOFF_LOG_INTERVAL_MS) {
+          this._lastConnectLogAt = Date.now();
+          this.log(`Connection failed (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${reason}. Next attempt in ${Math.round(delay / 1000)}s.`);
+        }
 
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
           this._setConnectivityAlarm(true);
           this._setWarningSource('connectivity',
-            `Cannot reach this battery: ${reason}. Check that the battery is powered on, reachable at ${this.settings.ip}, and that Modbus TCP is still enabled in the Marstek app.`);
+            this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD
+              ? `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It comes back on its own, but readings and commands are missed each time. Last error: ${reason}.`
+              : `Cannot reach this battery: ${reason}. Check that it is powered on and reachable at ${this.settings.ip}, and that Modbus TCP is still enabled in the Marstek app.`);
         }
         return;
       }
       this._connectFailures = 0;
       this._connectBackoffUntil = 0;
+      this._lastConnectLogAt = 0;
 
       const slaveId = this.settings.slave_id || 1;
       // Per-cycle read counters and circuit-breaker state used by _readSafe.
@@ -963,20 +981,7 @@ async writeDeviceName(name, config) {
           this._emptyCycles = 0;
           this._pendingRecoveryReconnect = true;
         }
-        // Mark the start of an outage once, and record the mode it died in.
-        if (!this._outageStartedAt) {
-          this._outageStartedAt = Date.now();
-          this._outageTimestamps.push(this._outageStartedAt);
-          this._outageTimestamps = this._outageTimestamps
-            .filter((t) => this._outageStartedAt - t < this.OUTAGE_WINDOW_MS);
-          this.log(`[poll] Stopped receiving data. Last known mode: ${this._lastKnownMode || 'unknown'}. Outage ${this._outageTimestamps.length} in the last hour.`);
-        }
-        // Frequent short dropouts never reach SUSTAINED_FAILURE_MS but cost a
-        // command every time, so repetition gets its own message.
-        if (this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD) {
-          this._setWarningSource('connectivity',
-            `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It recovers on its own, but readings and commands are missed each time. A diagnostic report while this is happening would help find the cause.`);
-        }
+        this._noteOutageStarted(null);
         const silentMs = this._lastSuccessfulReadAt ? Date.now() - this._lastSuccessfulReadAt : 0;
         if (silentMs >= this.SUSTAINED_FAILURE_MS) {
           this._setWarningSource('connectivity',
@@ -1006,6 +1011,29 @@ async writeDeviceName(name, config) {
       } else {
         this.log(`[poll] Abandoned cycle ${generation} finished late after ${Date.now() - this._pollStartedAt}ms; current cycle ${this._pollGeneration} keeps running.`);
       }
+    }
+  }
+
+  // One place that records the start of an outage, whichever layer it began at.
+  // Until now this only ran when a connected battery stopped answering; a
+  // battery that drops off the network entirely never reached it, so the whole
+  // outage story was missing for exactly the failure mode that turned out to
+  // matter most.
+  _noteOutageStarted(reason) {
+    if (this._outageStartedAt) return;
+    this._outageStartedAt = Date.now();
+    this._outageTimestamps.push(this._outageStartedAt);
+    this._outageTimestamps = this._outageTimestamps
+      .filter((t) => this._outageStartedAt - t < this.OUTAGE_WINDOW_MS);
+    this.log(`[poll] Stopped receiving data${reason ? ` (${reason})` : ''}. Last known mode: ${this._lastKnownMode || 'unknown'}. Outage ${this._outageTimestamps.length} in the last hour.`);
+
+    // Deliberately not gated on consecutiveErrors. Each of these outages is
+    // short enough to reset that counter when the battery comes back, so
+    // gating on it would mean the message for repeated dropouts could never
+    // appear for the pattern it exists to describe.
+    if (this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD) {
+      this._setWarningSource('connectivity',
+        `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It comes back on its own, but readings and commands are missed each time. A diagnostic report while this is happening would help find the cause.`);
     }
   }
 
