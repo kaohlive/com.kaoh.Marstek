@@ -94,6 +94,20 @@ class VenusDDevice extends Homey.Device {
     this._warningSources = { connectivity: null, alarm: null, config: null };
     this._currentWarningText = null;
     this.SUSTAINED_FAILURE_MS = 300000;
+    // Outage bookkeeping, purely so a diagnostic report can answer "why did it
+    // die" without anyone having to correlate by hand. The operating mode at
+    // the moment the data stopped is the interesting one: if these batteries
+    // drop their Modbus server when they go to sleep, that is where it shows.
+    this._outageStartedAt = 0;
+    this._lastKnownMode = null;
+    this._outageTimestamps = [];
+    this._lastBackoffLogAt = 0;
+    this.OUTAGE_WINDOW_MS = 3600000;
+    // Frequent short outages never trip SUSTAINED_FAILURE_MS but still eat a
+    // command every time, which is what hurts anyone driving the battery from
+    // an EMS. Repetition is the signal there, not duration.
+    this.REPEATED_OUTAGE_THRESHOLD = 3;
+    this.BACKOFF_LOG_INTERVAL_MS = 60000;
     this._cyclesOverrunningInterval = 0;
 
     // Registers this firmware answered with a protocol exception. Marstek
@@ -637,6 +651,17 @@ class VenusDDevice extends Homey.Device {
           this.log(`Partial poll: ${this._pollReadsOk} ok, ${this._pollReadsFail} failed`);
         }
         this.consecutiveErrors = 0;
+        // Coming out of an outage: report what it cost and what state the
+        // battery was in when it stopped answering.
+        if (this._outageStartedAt) {
+          const outageMs = Date.now() - this._outageStartedAt;
+          this._outageTimestamps = this._outageTimestamps
+            .filter((t) => Date.now() - t < this.OUTAGE_WINDOW_MS);
+          this.log(`[poll] Data is back after ${Math.round(outageMs / 1000)}s of silence. Mode when it went quiet: ${this._lastKnownMode || 'unknown'}. That is outage ${this._outageTimestamps.length} in the last hour.`);
+          this._outageStartedAt = 0;
+          this._lastBackoffLogAt = 0;
+        }
+        this._lastKnownMode = this.getCapabilityValue('operation_mode') || this._lastKnownMode;
         this._lastSuccessfulReadAt = Date.now();
         this._emptyCycles = 0;
         this._emptyCyclesBeforeReconnect = this.EMPTY_CYCLES_BASE;
@@ -651,6 +676,20 @@ class VenusDDevice extends Homey.Device {
         if (this._emptyCycles >= this._emptyCyclesBeforeReconnect) {
           this._emptyCycles = 0;
           this._pendingRecoveryReconnect = true;
+        }
+        // Mark the start of an outage once, and record the mode it died in.
+        if (!this._outageStartedAt) {
+          this._outageStartedAt = Date.now();
+          this._outageTimestamps.push(this._outageStartedAt);
+          this._outageTimestamps = this._outageTimestamps
+            .filter((t) => this._outageStartedAt - t < this.OUTAGE_WINDOW_MS);
+          this.log(`[poll] Stopped receiving data. Last known mode: ${this._lastKnownMode || 'unknown'}. Outage ${this._outageTimestamps.length} in the last hour.`);
+        }
+        // Frequent short dropouts never reach SUSTAINED_FAILURE_MS but cost a
+        // command every time, so repetition gets its own message.
+        if (this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD) {
+          this._setWarningSource('connectivity',
+            `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It recovers on its own, but readings and commands are missed each time. A diagnostic report while this is happening would help find the cause.`);
         }
         const silentMs = this._lastSuccessfulReadAt ? Date.now() - this._lastSuccessfulReadAt : 0;
         if (silentMs >= this.SUSTAINED_FAILURE_MS) {

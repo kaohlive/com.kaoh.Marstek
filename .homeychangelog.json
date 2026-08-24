@@ -1,4 +1,7 @@
 {
+  "1.5.21": {
+    "en": "Adds detail to the app log so the cause of these dropouts can finally be traced: when a battery goes quiet the log now records how long it was silent, what the battery was doing at that moment, and how often it has happened in the last hour. A battery that drops out repeatedly now says so on its tile, even when each individual dropout is short."
+  },
   "1.5.20": {
     "en": "Batteries that stop responding now recover on their own within a minute or two, instead of staying silent until the app is restarted. A battery that has been unreachable for several minutes says so on its tile instead of showing old values. A battery that refuses connections is retried at a sensible pace instead of on every poll."
   },
