@@ -61,7 +61,12 @@ class VenusBatteryDevice extends Homey.Device {
     // Streak needed before each further attempt, so a device that is genuinely
     // gone backs off instead of cycling its socket every five polls forever.
     this.EMPTY_CYCLES_BASE = 5;
-    this.EMPTY_CYCLES_MAX = 60;
+    // 20, not 60. The escalation guards against churning a socket that keeps
+    // connecting but never answers; at ~15s per empty cycle a cap of 60 meant a
+    // quarter of an hour between attempts, so a battery that came back was only
+    // noticed on the next socket replacement. Same reasoning as the 30s connect
+    // backoff: waiting longer does not help a device that has already returned.
+    this.EMPTY_CYCLES_MAX = 20;
 
     // Connect backoff. A refused port retried at poll cadence is a connect
     // storm - one tester produced 545 attempts at 1/s. Unlike a read timeout
@@ -988,7 +993,7 @@ async writeDeviceName(name, config) {
             `No data from this battery for ${Math.round(silentMs / 60000)} minutes. The network connection is open but the battery is not answering. Please send a diagnostic report from the app settings before restarting anything - that is what lets this be fixed.`);
         }
         this.consecutiveErrors++;
-        this.log(`Poll produced no data (${this._pollReadsFail} reads failed) (${this.consecutiveErrors}/${this.maxConsecutiveErrors})`);
+        this.log(`Poll produced no data (${this._pollReadsFail} reads failed, ${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors})`);
         if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
           this._setConnectivityAlarm(true);
         }
@@ -996,7 +1001,19 @@ async writeDeviceName(name, config) {
 
     } catch (error) {
       this.consecutiveErrors++;
-      this.log(`Polling error (${this.consecutiveErrors}/${this.maxConsecutiveErrors}):`, error.message);
+      this.log(`Polling error (${this.consecutiveErrors} consecutive, alarm threshold ${this.maxConsecutiveErrors}): ${error.message}`);
+
+      // A cycle that threw delivered no data either, so it counts towards the
+      // half-open recovery exactly like an empty one. Without this the recovery
+      // machinery was unreachable from this route: it only ever armed from the
+      // orderly "connected but answered nothing" path, leaving a device that
+      // fails by exception to sit on a dead socket indefinitely.
+      this._noteOutageStarted(error.message);
+      this._emptyCycles++;
+      if (this._emptyCycles >= this._emptyCyclesBeforeReconnect) {
+        this._emptyCycles = 0;
+        this._pendingRecoveryReconnect = true;
+      }
 
       if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this._isDeleted) {
         this._setConnectivityAlarm(true);
@@ -1020,18 +1037,26 @@ async writeDeviceName(name, config) {
   // outage story was missing for exactly the failure mode that turned out to
   // matter most.
   _noteOutageStarted(reason) {
+    // This runs on failure paths, including from inside pollData's catch block.
+    // An exception thrown here would escape pollData altogether and surface as
+    // an unhandled rejection on the poll timer, so it must never be the thing
+    // that fails: every field it touches is initialised on use.
+    if (!this._outageTimestamps) this._outageTimestamps = [];
+    const windowMs = this.OUTAGE_WINDOW_MS || 3600000;
+    const threshold = this.REPEATED_OUTAGE_THRESHOLD || 3;
+
     if (this._outageStartedAt) return;
     this._outageStartedAt = Date.now();
     this._outageTimestamps.push(this._outageStartedAt);
     this._outageTimestamps = this._outageTimestamps
-      .filter((t) => this._outageStartedAt - t < this.OUTAGE_WINDOW_MS);
+      .filter((t) => this._outageStartedAt - t < windowMs);
     this.log(`[poll] Stopped receiving data${reason ? ` (${reason})` : ''}. Last known mode: ${this._lastKnownMode || 'unknown'}. Outage ${this._outageTimestamps.length} in the last hour.`);
 
     // Deliberately not gated on consecutiveErrors. Each of these outages is
     // short enough to reset that counter when the battery comes back, so
     // gating on it would mean the message for repeated dropouts could never
     // appear for the pattern it exists to describe.
-    if (this._outageTimestamps.length >= this.REPEATED_OUTAGE_THRESHOLD) {
+    if (this._outageTimestamps.length >= threshold) {
       this._setWarningSource('connectivity',
         `This battery has lost its connection ${this._outageTimestamps.length} times in the last hour. It comes back on its own, but readings and commands are missed each time. A diagnostic report while this is happening would help find the cause.`);
     }

@@ -1,4 +1,7 @@
 {
+  "1.5.23": {
+    "en": "Closes two ways a battery could stay on a dead connection: an unexpected error during a read round now counts towards the automatic reconnect just like a round that returned nothing, and the app no longer waits up to a quarter of an hour between attempts when a battery has been unreachable for a while. Thanks to Remi for spotting the first one in his own build."
+  },
   "1.5.22": {
     "en": "A battery that disappears from the network is now noticed and reported the same way as one that stops answering, and is picked up again within half a minute of coming back instead of up to five. A battery that keeps dropping out briefly says so on its tile, even when each individual dropout is too short to look like a problem."
   },
